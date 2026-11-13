@@ -125,7 +125,36 @@ describe("drive loop", () => {
       { type: "routeGuidance", instruction: "좌회전", now: 3000 },
       { type: "gear", gear: "P", now: 4000 },
     ]);
-    expect(effects.slice(-2)).toEqual([{ kind: "stopAllAudio" }, { kind: "sos", cause: "airbag" }]);
+    expect(effects.slice(-3)).toEqual([
+      { kind: "stopAllAudio" },
+      { kind: "sos", cause: "airbag" },
+      { kind: "save", data: { scenarioId: "s1", cursor: { chapter: 0, beat: 1 }, flags: {}, updatedAt: 2000 } },
+    ]);
     expect(state).toEqual({ phase: "emergency", cause: "airbag" });
+  });
+
+  it("still counts harsh driving in the final minute after arrival", () => {
+    const { state } = feed(begin(15), [
+      { type: "tick", now: 14 * MIN, etaMinutes: 1 },
+      { type: "harshDriving", kind: "brake", now: 14 * MIN + 10_000 },
+      { type: "harshDriving", kind: "brake", now: 14 * MIN + 50_000 },
+      { type: "gear", gear: "P", now: 15 * MIN },
+    ]);
+    expect(state).toMatchObject({ phase: "parked", report: { harsh: { brake: 2 }, safetyScore: 90 } });
+  });
+
+  it("never reroutes on its own when every option is a detour", () => {
+    const allDetour = { ...scenario, chapters: [{ ...scenario.chapters[0]!, beats: [{ id: "d", line: "갈림길", choices: [
+      { id: "l", label: "왼쪽", reply: "왼쪽!", routeHint: "detour" as const },
+      { id: "r", label: "오른쪽", reply: "오른쪽!", routeHint: "detour" as const },
+    ] }] }] };
+    const ready = [{ type: "selectStory", scenario: allDetour } as const, { type: "startNew", now: 0 } as const, { type: "setDestination", etaMinutes: 30 } as const].reduce(preDrive, INITIAL_PRE_DRIVE);
+    if (ready.kind !== "ready") throw new Error("not ready");
+    const { effects } = feed(startDrive(ready, 0), [
+      { type: "congestion", now: 1000 },
+      { type: "tick", now: 30_000, etaMinutes: 29 },
+    ]);
+    expect(effects).toContainEqual({ kind: "hideChoices" });
+    expect(effects.some((e) => e.kind === "reroute")).toBe(false);
   });
 });

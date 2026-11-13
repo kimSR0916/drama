@@ -104,10 +104,11 @@ function playNextBeat(trip: Trip, now: number): Step {
   return { state: { phase: "driving", trip: next }, effects };
 }
 
-function resolveChoice(trip: Trip, choice: Choice): Step {
+function resolveChoice(trip: Trip, choice: Choice, byDriver: boolean): Step {
   const pending = trip.pending!;
   const effects: Effect[] = [{ kind: "hideChoices" }, say("character", choice.reply)];
-  if (choice.routeHint) effects.push({ kind: "reroute", prefer: choice.routeHint });
+  const reroute = choice.routeHint === "detour" && !byDriver ? undefined : choice.routeHint;
+  if (reroute) effects.push({ kind: "reroute", prefer: reroute });
   return {
     state: { phase: "driving", trip: { ...trip, pending: null, flags: { ...trip.flags, [pending.beatId]: choice.id } } },
     effects,
@@ -125,23 +126,31 @@ function beatDue(trip: Trip, now: number): boolean {
   return now - trip.lastBeatAt >= storyWindow / (remainingBeats + 1);
 }
 
+function progress(trip: Trip, now: number): SaveData {
+  return {
+    scenarioId: trip.scenario.id,
+    cursor: advance(trip.scenario, trip.save.cursor, trip.played),
+    flags: trip.flags,
+    updatedAt: now,
+  };
+}
+
+function countHarsh(trip: Trip, kind: HarshKind): Trip {
+  return { ...trip, harsh: { ...trip.harsh, [kind]: trip.harsh[kind] + 1 } };
+}
+
 function arrive(trip: Trip, now: number): Step {
   const effects: Effect[] = [];
   let settled = trip;
   if (trip.pending) {
-    const step = resolveChoice(trip, safeDefault(trip.pending.choices));
+    const step = resolveChoice(trip, safeDefault(trip.pending.choices), false);
     effects.push(...step.effects);
     if (step.state.phase === "driving") settled = step.state.trip;
   }
   const playedAll = settled.played === settled.plan.beats.length;
   const chapter = settled.scenario.chapters[settled.save.cursor.chapter];
   const ending = playedAll ? settled.plan.ending : (chapter?.cliffhanger ?? settled.plan.ending);
-  const save: SaveData = {
-    scenarioId: settled.scenario.id,
-    cursor: advance(settled.scenario, settled.save.cursor, settled.played),
-    flags: settled.flags,
-    updatedAt: now,
-  };
+  const save = progress(settled, now);
   effects.push(say("character", ending), { kind: "bgm", on: false }, { kind: "save", data: save });
   return { state: { phase: "arrived", trip: settled, save }, effects };
 }
@@ -171,11 +180,11 @@ function driving(trip: Trip, event: DriveEvent): Step {
     case "tick": {
       const t = { ...trip, arrivalAt: event.now + event.etaMinutes * MINUTE };
       if (event.etaMinutes <= ARRIVAL_LEAD_MINUTES) return arrive(t, event.now);
-      if (t.pending && event.now >= t.pending.deadline) return resolveChoice(t, safeDefault(t.pending.choices));
+      if (t.pending && event.now >= t.pending.deadline) return resolveChoice(t, safeDefault(t.pending.choices), false);
       return beatDue(t, event.now) ? playNextBeat(t, event.now) : stay(t);
     }
     case "harshDriving": {
-      const t = { ...trip, harsh: { ...trip.harsh, [event.kind]: trip.harsh[event.kind] + 1 } };
+      const t = countHarsh(trip, event.kind);
       if (event.now - trip.lastReactionAt < REACTION_COOLDOWN_MS) return stay(t);
       const { reactions } = trip.scenario.persona;
       const line = { accel: reactions.harshAccel, brake: reactions.harshBrake, turn: reactions.harshTurn }[event.kind];
@@ -191,7 +200,7 @@ function driving(trip: Trip, event: DriveEvent): Step {
       return stay(trip, [say("character", `${trip.scenario.persona.name}: ${event.instruction}`)]);
     case "driverInput": {
       const choice = trip.pending?.choices.find((c) => c.id === event.choiceId);
-      return choice ? resolveChoice(trip, choice) : stay(trip);
+      return choice ? resolveChoice(trip, choice, true) : stay(trip);
     }
     case "gear": {
       if (event.gear !== "P") return stay(trip);
@@ -201,23 +210,25 @@ function driving(trip: Trip, event: DriveEvent): Step {
       return { state: parked.state, effects: [...arrived.effects, ...parked.effects] };
     }
     case "emergency":
-      return emergency(event.cause);
+      return emergency(event.cause, [{ kind: "save", data: progress(trip, event.now) }]);
   }
 }
 
-function emergency(cause: EmergencyCause): Step {
-  return { state: { phase: "emergency", cause }, effects: [{ kind: "stopAllAudio" }, { kind: "sos", cause }] };
+function emergency(cause: EmergencyCause, after: Effect[] = []): Step {
+  return { state: { phase: "emergency", cause }, effects: [{ kind: "stopAllAudio" }, { kind: "sos", cause }, ...after] };
 }
 
+// Emergency is terminal by design: once SOS starts, no story or UI transition may follow.
 export function drive(state: DriveState, event: DriveEvent): Step {
   if (state.phase === "emergency") return { state, effects: [] };
-  if (event.type === "emergency") return emergency(event.cause);
   switch (state.phase) {
     case "driving":
       return driving(state.trip, event);
     case "arrived":
+      if (event.type === "emergency") return emergency(event.cause);
+      if (event.type === "harshDriving") return { state: { ...state, trip: countHarsh(state.trip, event.kind) }, effects: [] };
       return event.type === "gear" && event.gear === "P" ? park(state.trip, state.save, event.now) : { state, effects: [] };
     case "parked":
-      return { state, effects: [] };
+      return event.type === "emergency" ? emergency(event.cause) : { state, effects: [] };
   }
 }
