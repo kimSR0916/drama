@@ -93,7 +93,7 @@ private val drafts: Map<String, ScenarioDraft> = linkedMapOf(
         premise = "운전자는 심야 택시 기사다. 검은 코트를 입은 손님이 목적지를 말하지 않고 '그냥 계속 달려 달라'고 한다. 손님의 이야기를 들을수록 정체가 드러난다.",
         personaName = "손님",
         personaTone = "낮고 느긋한 목소리의 수상한 승객",
-        reactions = ReactionsDraft(harshAccel = "손님: 서두를 필요 없어요. 쫓아오는 사람은 없으니까. 아직은요.", harshBrake = "손님: 조심하세요. 이 가방 안의 물건이 깨지면 우리 둘 다 곤란해져요.", harshTurn = "손님: 운전 솜씨가 좋네요. 그래도 커브는 천천히 부탁해요.", congestion = "손님: 막히는군요. 마침 잘됐어요. 제 이야기를 조금 더 들려드리죠."),
+        reactions = ReactionsDraft(harshAccel = "손님: 서두를 필요 없어요. 천천히 가야 이야기도 끝까지 들려드릴 수 있죠.", harshBrake = "손님: 조심하세요. 이 가방 안의 물건이 깨지면 우리 둘 다 곤란해져요.", harshTurn = "손님: 운전 솜씨가 좋네요. 그래도 커브는 천천히 부탁해요.", congestion = "손님: 막히는군요. 마침 잘됐어요. 제 이야기를 조금 더 들려드리죠."),
         chapters = listOf(
             ChapterDraft(
                 title = "1화 검은 코트",
@@ -107,7 +107,7 @@ private val drafts: Map<String, ScenarioDraft> = linkedMapOf(
                         ),
                     ),
                     BeatDraft("손님: 이 가방엔 30년 전 이 도시에서 사라진 시계탑의 열쇠가 들어 있어요."),
-                    BeatDraft("손님: 그리고 그 열쇠를 찾는 사람들이 오늘 밤 저를 따라오고 있어요. 백미러를 보지는 마세요."),
+                    BeatDraft("손님: 그 열쇠를 찾는 사람들이 이 도시 어딘가에 있어요. 걱정 마세요, 기사님은 평소처럼 안전하게만 가 주시면 돼요."),
                 ),
                 cliffhanger = "손님: 오늘은 여기까지 하죠. 다음에 기사님 차를 다시 타게 될 거예요. 우연처럼요.",
                 finale = "손님: 고마워요, 기사님. 열쇠는 제자리를 찾았어요. 요금은 시계탑이 다시 울릴 때 받으러 오세요.",

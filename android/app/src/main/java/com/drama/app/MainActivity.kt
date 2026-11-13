@@ -96,6 +96,7 @@ private fun App(vm: DramaViewModel) {
     val ui by vm.ui.collectAsState()
     val s = ui.session
     var authoring by remember { mutableStateOf(false) }
+    LaunchedEffect(ui.systemUxRestricted) { if (ui.systemUxRestricted) authoring = false }
     Column(Modifier.fillMaxSize().padding(32.dp)) {
         StatusBar(ui)
         Spacer(Modifier.height(20.dp))
@@ -104,7 +105,7 @@ private fun App(vm: DramaViewModel) {
                 s.sos != null -> SosScreen(s.sos)
                 s.report != null -> ReportScreen(vm, ui)
                 s.drive != null -> DriveScreen(vm, ui)
-                authoring && !ui.systemUxRestricted -> AuthoringScreen(vm, ui) { authoring = false }
+                authoring -> AuthoringScreen(vm, ui) { authoring = false }
                 else -> PreDriveScreen(vm, ui) { authoring = true }
             }
         }

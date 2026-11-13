@@ -57,7 +57,7 @@ class VehicleSignals(
     private val vehicle = Vehicle(context)
     private val car: Car? = runCatching { Car.createCar(context) }.getOrNull()
     private val harsh = HarshDetector(onHarsh)
-    private val frontSeats = listOf(SeatArea(SeatValue.ROW_1_LEFT))
+    private val driverSeats = listOf(SeatArea(SeatValue.ROW_1_LEFT))
     private var speedRegistered = false
 
     private val gearListener = object : GearSelectionListener {
@@ -96,7 +96,7 @@ class VehicleSignals(
         runCatching {
             vehicle.initialize()
             vehicle.getGear().registerGearSelection(gearListener)
-            frontSeats.forEach { vehicle.getSafety().registerSeatAirbagDeployed(it, airbagListener) }
+            driverSeats.forEach { vehicle.getSafety().registerSeatAirbagDeployed(it, airbagListener) }
         }.onFailure { Log.w(TAG, "Pleos Vehicle unavailable", it) }
         ensureSpeed()
         runCatching {
@@ -118,7 +118,7 @@ class VehicleSignals(
     fun stop() {
         runCatching {
             vehicle.getGear().unregisterGearSelection(gearListener)
-            frontSeats.forEach { vehicle.getSafety().unregisterSeatAirbagDeployed(it, airbagListener) }
+            driverSeats.forEach { vehicle.getSafety().unregisterSeatAirbagDeployed(it, airbagListener) }
             vehicle.release()
         }
         runCatching {
