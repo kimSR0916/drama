@@ -43,6 +43,16 @@ cd android
 
 `local.properties`에 `sdk.dir`가 필요합니다. Pleos SDK는 공개 저장소(`nexus-playground.pleos.ai`)에서 받아옵니다.
 
+## 시나리오
+
+차 안에서만 할 수 있는 이야기를 목표로 했습니다. 실제 운전이 이야기 속 행동이 되는 테마를 앞에 두었습니다.
+
+- **폭주 기관차 777.** 브레이크가 고장 난 열차의 기관사가 됩니다. 급가속을 하면 열차가 위험해지고, 정체는 "선로 위 양 떼"가 됩니다. 우회를 고르면 실제 경로 재탐색으로 이어집니다.
+- **이세계 트럭 기사.** 이세계에 소환된 트럭 기사가 되어 드래곤의 알을 배달합니다. 급제동을 하면 "짐칸의 알이 흔들려요!"라는 반응이 나옵니다.
+- **심야 택시: 수상한 손님.** 택시 기사가 되어 정체를 숨긴 손님과 대화합니다.
+- 우주 화물선 오리온, 야간 탐정 사무소, 새벽 라디오 DJ.
+- 정차 중에는 직접 시나리오를 만들 수 있습니다. 캐릭터 반응 대사가 비어 있으면 캐릭터 이름으로 자동으로 채워집니다.
+
 ## 주요 기능과 Pleos SDK 활용
 
 | 워크플로우 | 기능 | 사용 API |
@@ -52,10 +62,10 @@ cd android
 | 주행 중 | 급가속·급제동 시 캐릭터 반응. 반응은 30초에 한 번이고, 집계는 매번 합니다 | `android.car` `PERF_VEHICLE_SPEED`로 속도 변화율 계산 |
 | 주행 중 | 정체 구간 진입 시 다음 장면을 앞당겨 들려줌 | NaviHelper `onRouteStateInfo.trafficStatus` |
 | 주행 중 | 턴바이턴 안내를 캐릭터 목소리로 전달 | NaviHelper `onTBTInfo` |
-| 주행 중 | 대사와 선택지 음성 출력, 음성으로 답하기 | Pleos TextToSpeech, SpeechToText (ON_DEVICE, ko-KR) |
+| 주행 중 | 대사를 한 줄씩 차례로 읽고, 질문이 끝난 뒤에만 음성 인식을 켬. "1번", "두 번째", 선택지 이름으로 답할 수 있음 | Pleos TextToSpeech, SpeechToText (ON_DEVICE, ko-KR) |
 | 주행 중 | 우회를 고르면 경로 재탐색. 운전자가 직접 고른 경우에만 하고, 경로 안내 중일 때만 합니다 | NaviHelper `changeRouteOption`, `requestReRoute` |
 | 주행 중 | 주행 제한 상태 표시와 큰 버튼 위주 UI | `CarUxRestrictionsManager` |
-| 비상 | 에어백 전개 시 모든 음성을 끊고 SOS 화면으로 전환. 진행 상황은 저장 | Vehicle Safety `registerSeatAirbagDeployed` |
+| 비상 | 운전석 에어백 전개 시 모든 음성을 끊고 SOS 화면으로 전환. 진행 상황은 저장 | Vehicle Safety `registerSeatAirbagDeployed` |
 | 도착 | 1분 전 소결말과 스마트 세이브. P단 체결 시 제한 해제와 주행 리포트(안전 점수, 진행률, 보상 카드) | Vehicle Gear `registerGearSelection` |
 
 ## 구조
@@ -75,6 +85,8 @@ cd android
   4. 이어하기로 2장 시작, 에어백 SOS
 
 ## 알려진 한계
+
+- 이 에뮬레이터에는 `hmg_car_service`가 없어서 시스템 주행 제한(`CarUxRestrictionsManager`)을 켤 수 없습니다. E2E가 확인하는 "주행 제한 활성" 표시는 앱이 주행 시작 시 스스로 거는 제한입니다. 정차 중에만 열리는 시나리오 작성 화면은 시스템 제한이 켜지면 바로 닫힙니다.
 
 - 에뮬레이터는 user 빌드라서 기어와 속도를 adb로 주입할 수 없습니다. 기어는 Pleos Virtual Console로 바꾸거나, 시연 모드의 기어 P 버튼으로 대신합니다.
 - NaviHelper의 `remainTime`은 초 단위로 가정했습니다. 경로 안내 중 남은 시간이 맞는지는 실제 경로로 확인해야 합니다.

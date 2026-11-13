@@ -57,7 +57,8 @@ class VehicleSignals(
     private val vehicle = Vehicle(context)
     private val car: Car? = runCatching { Car.createCar(context) }.getOrNull()
     private val harsh = HarshDetector(onHarsh)
-    private val driverSeat = SeatArea(SeatValue.ROW_1_LEFT)
+    private val frontSeats = listOf(SeatArea(SeatValue.ROW_1_LEFT))
+    private var speedRegistered = false
 
     private val gearListener = object : GearSelectionListener {
         override fun onSelected(gear: VehicleGear?) {
@@ -95,21 +96,29 @@ class VehicleSignals(
         runCatching {
             vehicle.initialize()
             vehicle.getGear().registerGearSelection(gearListener)
-            vehicle.getSafety().registerSeatAirbagDeployed(driverSeat, airbagListener)
+            frontSeats.forEach { vehicle.getSafety().registerSeatAirbagDeployed(it, airbagListener) }
         }.onFailure { Log.w(TAG, "Pleos Vehicle unavailable", it) }
+        ensureSpeed()
         runCatching {
-            val props = car?.getCarManager(Car.PROPERTY_SERVICE) as? CarPropertyManager
-            props?.registerCallback(speedCallback, VehiclePropertyIds.PERF_VEHICLE_SPEED, CarPropertyManager.SENSOR_RATE_NORMAL)
             val ux = car?.getCarManager(Car.CAR_UX_RESTRICTION_SERVICE) as? CarUxRestrictionsManager
             ux?.registerListener(uxListener)
             ux?.currentCarUxRestrictions?.let { onUxRestricted(it.isRequiresDistractionOptimization) }
         }.onFailure { Log.w(TAG, "Car service unavailable", it) }
     }
 
+    fun ensureSpeed() {
+        if (speedRegistered) return
+        runCatching {
+            val props = car?.getCarManager(Car.PROPERTY_SERVICE) as? CarPropertyManager
+            speedRegistered = props?.registerCallback(speedCallback, VehiclePropertyIds.PERF_VEHICLE_SPEED, CarPropertyManager.SENSOR_RATE_NORMAL) == true
+            if (!speedRegistered) Log.w(TAG, "vehicle speed unavailable; harsh driving detection off until permission is granted")
+        }.onFailure { Log.w(TAG, "speed registration failed", it) }
+    }
+
     fun stop() {
         runCatching {
             vehicle.getGear().unregisterGearSelection(gearListener)
-            vehicle.getSafety().unregisterSeatAirbagDeployed(driverSeat, airbagListener)
+            frontSeats.forEach { vehicle.getSafety().unregisterSeatAirbagDeployed(it, airbagListener) }
             vehicle.release()
         }
         runCatching {

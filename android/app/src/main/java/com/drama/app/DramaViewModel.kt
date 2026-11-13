@@ -121,8 +121,8 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
     private fun refresh() = post {
         it.copy(
             session = session.view,
-            stories = store.listScenarios().sortedBy { s -> if (s.source == ScenarioSource.CUSTOM) 0 else 1 },
-            naviEtaMinutes = naviEta?.second,
+            stories = store.listScenarios().sortedBy { s -> if (s.source == ScenarioSource.CUSTOM) -1 else BUILTIN_SCENARIOS.indexOfFirst { it.id == s.id } },
+            naviEtaMinutes = naviFresh(),
         )
     }
 
@@ -133,9 +133,14 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun naviFresh(): Double? = naviEta?.takeIf { now() - it.first <= NAVI_FRESH_MS }?.second
 
+    fun onPermissionsChanged() = vehicle.ensureSpeed()
+
     private fun tick(forceArrival: Boolean = false) {
-        if (session.view.drive !is DriveState.Driving) return
         navi.poll()
+        if (session.view.drive !is DriveState.Driving) {
+            if (_ui.value.naviEtaMinutes != naviFresh()) refresh()
+            return
+        }
         val elapsedMinutes = TICK_MS * (if (_ui.value.demoMode) DEMO_SPEED else 1) / 60_000.0
         etaMinutes = when {
             forceArrival -> 0.0

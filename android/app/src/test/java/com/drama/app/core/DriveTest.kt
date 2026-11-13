@@ -44,7 +44,7 @@ class DriveTest {
     @Test fun driverChoiceReroutesAndTimeoutKeepsRoute() {
         val (_, picked) = feed(begin(41.0), DriveEvent.Tick(10 * MIN, 31.0), DriveEvent.DriverInput("fast", InputVia.VOICE, 10 * MIN + 1))
         assertTrue(Effect.Reroute(RouteHint.DETOUR) in picked)
-        val (_, silent) = feed(begin(41.0), DriveEvent.Tick(10 * MIN, 31.0), DriveEvent.Tick(10 * MIN + 21_000, 30.0))
+        val (_, silent) = feed(begin(41.0), DriveEvent.Tick(10 * MIN, 31.0), DriveEvent.Tick(10 * MIN + 31_000, 30.0))
         assertTrue(Effect.Reroute(RouteHint.KEEP) in silent)
     }
 
@@ -123,7 +123,7 @@ class DriveTest {
             Choice("l", "왼쪽", "왼쪽!", RouteHint.DETOUR),
             Choice("r", "오른쪽", "오른쪽!", RouteHint.DETOUR),
         ))))))
-        val (_, effects) = feed(begin(30.0, allDetour), DriveEvent.Congestion(1000), DriveEvent.Tick(30_000, 29.0))
+        val (_, effects) = feed(begin(30.0, allDetour), DriveEvent.Congestion(1000), DriveEvent.Tick(31_000, 29.0))
         assertTrue(Effect.HideChoices in effects)
         assertFalse(effects.any { it is Effect.Reroute })
     }

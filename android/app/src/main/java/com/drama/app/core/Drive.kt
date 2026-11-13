@@ -2,7 +2,7 @@ package com.drama.app.core
 
 const val ARRIVAL_LEAD_MINUTES = 1.0
 const val REACTION_COOLDOWN_MS = 30_000L
-const val CHOICE_TIMEOUT_MS = 20_000L
+const val CHOICE_TIMEOUT_MS = 30_000L
 private const val MINUTE = 60_000L
 
 enum class Gear { P, R, N, D }

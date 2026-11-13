@@ -59,7 +59,7 @@ describe("drive loop", () => {
   it("falls back to the non-detour choice when the driver stays silent", () => {
     const { effects } = feed(begin(41), [
       { type: "tick", now: 10 * MIN, etaMinutes: 31 },
-      { type: "tick", now: 10 * MIN + 21_000, etaMinutes: 30 },
+      { type: "tick", now: 10 * MIN + 31_000, etaMinutes: 30 },
     ]);
     expect(effects).toContainEqual({ kind: "reroute", prefer: "keep" });
   });
@@ -152,7 +152,7 @@ describe("drive loop", () => {
     if (ready.kind !== "ready") throw new Error("not ready");
     const { effects } = feed(startDrive(ready, 0), [
       { type: "congestion", now: 1000 },
-      { type: "tick", now: 30_000, etaMinutes: 29 },
+      { type: "tick", now: 31_001, etaMinutes: 29 },
     ]);
     expect(effects).toContainEqual({ kind: "hideChoices" });
     expect(effects.some((e) => e.kind === "reroute")).toBe(false);

@@ -70,6 +70,16 @@ private val Muted = Color(0xFF9AA6BA)
 class MainActivity : ComponentActivity() {
     private val vm: DramaViewModel by viewModels()
 
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        vm.onPermissionsChanged()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        vm.onPermissionsChanged()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO, "android.car.permission.CAR_SPEED"), 0)
@@ -94,7 +104,7 @@ private fun App(vm: DramaViewModel) {
                 s.sos != null -> SosScreen(s.sos)
                 s.report != null -> ReportScreen(vm, ui)
                 s.drive != null -> DriveScreen(vm, ui)
-                authoring -> AuthoringScreen(vm, ui) { authoring = false }
+                authoring && !ui.systemUxRestricted -> AuthoringScreen(vm, ui) { authoring = false }
                 else -> PreDriveScreen(vm, ui) { authoring = true }
             }
         }

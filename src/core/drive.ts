@@ -5,7 +5,7 @@ import { advance, type Choice, type RouteHint, type SaveData, type Scenario } fr
 
 export const ARRIVAL_LEAD_MINUTES = 1;
 export const REACTION_COOLDOWN_MS = 30_000;
-export const CHOICE_TIMEOUT_MS = 20_000;
+export const CHOICE_TIMEOUT_MS = 30_000;
 const MINUTE = 60_000;
 
 export type Gear = "P" | "R" | "N" | "D";

@@ -14,6 +14,7 @@ class PlatformLogicTest {
         assertEquals("a", matchChoice("첫 번째", choices)?.id)
         assertEquals("b", matchChoice("2번", choices)?.id)
         assertNull(matchChoice("글쎄", choices))
+        assertNull(matchChoice("이번엔 모두 두고 가자", choices))
         assertNull(matchChoice("", choices))
     }
 
