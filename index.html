@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>drama 시뮬레이터</title>
+    <link rel="stylesheet" href="/src/web/style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>drama 시뮬레이터</h1>
+      <p>화면설계서 전 단계의 동작 확인용입니다. 엔진은 <code>src/core</code>에 있고 이 화면은 그 위의 얇은 껍데기입니다.</p>
+    </header>
+    <main>
+      <section class="device phone" aria-label="모바일 앱">
+        <h2>모바일 앱 · 나만의 시나리오</h2>
+        <form id="author">
+          <label>제목 <input name="title" maxlength="40" /></label>
+          <label>세계관 <textarea name="premise" rows="2"></textarea></label>
+          <label>캐릭터 이름 <input name="name" maxlength="40" /></label>
+          <label>캐릭터 말투 <input name="tone" maxlength="40" /></label>
+          <label>1장 제목 <input name="chapterTitle" maxlength="40" /></label>
+          <label>도입부 <input name="opening" /></label>
+          <label>장면 (한 줄에 하나) <textarea name="beats" rows="4"></textarea></label>
+          <button type="submit">클라우드에 저장</button>
+          <ul id="author-issues" class="issues"></ul>
+        </form>
+      </section>
+      <section class="device headunit" aria-label="차량 단말기">
+        <h2>차량 단말기</h2>
+        <div id="screen"></div>
+      </section>
+      <section class="device controls" aria-label="차량 신호">
+        <h2>차량 신호 (시뮬레이션)</h2>
+        <div id="signals"></div>
+        <label class="row"><input type="checkbox" id="tts" checked /> 음성 출력(TTS)</label>
+      </section>
+    </main>
+    <script type="module" src="/src/web/main.ts"></script>
+  </body>
+</html>

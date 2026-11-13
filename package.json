@@ -4,12 +4,15 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "tsc --noEmit && vitest run"
+    "check": "tsc --noEmit && vitest run && vite build"
   },
   "devDependencies": {
     "typescript": "5.9.3",
+    "vite": "7.3.8",
     "vitest": "4.0.18"
   }
 }
