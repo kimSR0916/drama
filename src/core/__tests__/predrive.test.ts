@@ -35,6 +35,7 @@ describe("preDrive", () => {
     const done: SaveData = { ...midSave, cursor: { chapter: 2, beat: 0 } };
     expect(run([{ type: "selectStory", scenario, save: done }]).kind).toBe("offerNew");
     expect(run([{ type: "selectStory", scenario, save: { ...midSave, scenarioId: "other" } }]).kind).toBe("offerNew");
+    expect(run([{ type: "selectStory", scenario, save: { ...midSave, cursor: { chapter: 0, beat: 9 } } }]).kind).toBe("offerNew");
   });
 
   it("rejects a non-positive ETA", () => {

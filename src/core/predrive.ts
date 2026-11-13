@@ -31,7 +31,9 @@ export function preDrive(state: PreDriveState, event: PreDriveEvent): PreDriveSt
     case "selectStory": {
       if (state.kind === "ready") return state;
       const { scenario, save } = event;
-      const hasHistory = save !== undefined && save.scenarioId === scenario.id && !isFinished(scenario, save.cursor);
+      const chapter = save ? scenario.chapters[save.cursor.chapter] : undefined;
+      const hasHistory =
+        save !== undefined && save.scenarioId === scenario.id && !isFinished(scenario, save.cursor) && chapter !== undefined && save.cursor.beat < chapter.beats.length;
       return hasHistory ? { kind: "askResume", scenario, save } : { kind: "offerNew", scenario };
     }
     case "startNew":
