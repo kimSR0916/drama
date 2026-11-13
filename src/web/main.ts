@@ -126,7 +126,7 @@ document.body.addEventListener("click", (ev) => {
   switch (el.dataset.action) {
     case "select": {
       const s = storyOf(el.dataset.id!);
-      if (s && !store.getScenario(s.id)) store.putScenario(s);
+      if (s?.source === "builtin") store.putScenario(s);
       c.selectStory(el.dataset.id!);
       break;
     }

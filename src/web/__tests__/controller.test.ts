@@ -32,15 +32,18 @@ describe("simulator controller", () => {
     expect(c.view().pre.kind).toBe("askResume");
   });
 
-  it("restart clears the stored save before driving", () => {
+  it("keeps stored progress until a restarted drive actually saves", () => {
     const { store, c } = setup();
     const id = "builtin-radio";
     store.putSave({ scenarioId: id, cursor: { chapter: 0, beat: 2 }, flags: { x: "y" }, updatedAt: 1 });
     c.selectStory(id);
     c.answer(false);
     c.answer(true);
-    expect(store.getSave(id)?.cursor).toEqual({ chapter: 0, beat: 0 });
-    expect(store.getSave(id)?.flags).toEqual({});
+    expect(store.getSave(id)?.cursor).toEqual({ chapter: 0, beat: 2 });
+    c.pre({ type: "setDestination", etaMinutes: 3 });
+    c.startDriving();
+    for (let i = 0; i < 3; i++) c.elapse(MIN);
+    expect(store.getSave(id)).toMatchObject({ cursor: { chapter: 0, beat: 1 }, flags: {} });
   });
 
   it("congestion adds delay to the ETA and SOS stops BGM", () => {

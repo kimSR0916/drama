@@ -103,15 +103,12 @@ export function createController(store: AccountStore, speak: (line: Line) => voi
       if (!scenario) return;
       const save = store.getSave(scenarioId);
       this.pre({ type: "selectStory", scenario, ...(save ? { save } : {}) });
-      if (view.pre.kind === "awaitingDestination") store.putSave(view.pre.save);
     },
     answer(yes: boolean) {
       this.pre({ type: "answer", yes, now: view.now });
-      if (view.pre.kind === "awaitingDestination") store.putSave(view.pre.save);
     },
     startNew() {
       this.pre({ type: "startNew", now: view.now });
-      if (view.pre.kind === "awaitingDestination") store.putSave(view.pre.save);
     },
     startDriving() {
       if (view.pre.kind !== "ready" || view.drive) return;
