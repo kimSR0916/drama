@@ -46,7 +46,7 @@ export function preDrive(state: PreDriveState, event: PreDriveEvent): PreDriveSt
       if (state.kind === "askRestart") {
         return event.yes
           ? { kind: "awaitingDestination", scenario: state.scenario, save: freshSave(state.scenario, event.now), resumed: false }
-          : { kind: "askResume", scenario: state.scenario, save: state.save };
+          : { kind: "selecting" };
       }
       return state;
     case "setDestination": {

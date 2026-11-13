@@ -26,9 +26,9 @@ describe("preDrive", () => {
     expect(s).toMatchObject({ kind: "awaitingDestination", resumed: false, save: { cursor: { chapter: 0, beat: 0 }, flags: {}, updatedAt: 7 } });
   });
 
-  it("loops back to the resume prompt when the driver declines both", () => {
+  it("returns to story select when the driver declines both", () => {
     const s = run([{ type: "selectStory", scenario, save: midSave }, { type: "answer", yes: false, now: 5 }, { type: "answer", yes: false, now: 6 }]);
-    expect(s.kind).toBe("askResume");
+    expect(s.kind).toBe("selecting");
   });
 
   it("treats a finished or foreign save as no history", () => {
