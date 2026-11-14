@@ -1,27 +1,33 @@
 package com.drama.app.core
 
+private val branch = Branch(
+    detour = Option("우회로로 빠진다", "우회로", "현명한 판단이야!"),
+    keep = Option("기존 경로 유지", "직진", "배짱 하나는 인정하지."),
+    timeoutLine = "답이 없군. 원래 길로 가지.",
+)
+
 val fixture = Scenario(
     id = "s1",
     source = ScenarioSource.BUILTIN,
-    title = "야간 탐정",
-    premise = "운전자는 도시를 누비는 탐정이다.",
+    genre = "로맨스 판타지",
+    title = "호위기사",
+    premise = "운전자는 마부다.",
     persona = Persona(
-        "하루", "침착한 조수",
-        Reactions("너무 서두르면 단서를 놓쳐요.", "괜찮아요? 천천히 가요.", "커브는 부드럽게요.", "막히는 동안 단서를 정리해 볼까요?"),
+        "기사", "까칠한 기사", "⚔️",
+        Reactions("말을 진정시켜라.", "앞을 잘 살피라고!", "부드럽게 몰아라.", "길이 막혔군."),
+        listOf("경계", "신뢰", "동료"),
     ),
     chapters = listOf(
         Chapter(
-            "c1", "1장 사라진 편지", "첫 번째 의뢰가 들어왔어요.",
+            "c1", "제1장", "출발하지.", "지난 이야기: 성문을 나섰다.",
             listOf(
-                Beat("b1", "편지가 사라졌대요.", listOf(
-                    Choice("fast", "지름길로", "지름길로 가죠.", RouteHint.DETOUR),
-                    Choice("safe", "원래 길로", "원래 길로 가죠.", RouteHint.KEEP),
-                )),
-                Beat("b2", "용의자는 우체부예요."),
-                Beat("b3", "우체부를 만났어요."),
+                Beat("s1", SceneKind.SUB, "잘 모는군."),
+                Beat("s2", SceneKind.CORE, "매복이다! 우회로로 빠질까, 직진할까?", branch),
+                Beat("s3", SceneKind.SUB, "친서를 지켜야 한다."),
+                Beat("s4", SceneKind.CORE, "은신처가 보인다."),
             ),
-            "다음에 계속.", "1장 해결!",
+            "다음에 계속.", "1장 끝!", "성문 앞의 기사",
         ),
-        Chapter("c2", "2장 가면", "새 의뢰예요.", listOf(Beat("b4", "가면을 쓴 남자.")), "다음에 계속.", "2장 해결!"),
+        Chapter("c2", "제2장", "밤이다.", "지난 이야기: 은신처에 왔다.", listOf(Beat("t1", SceneKind.CORE, "추격이다.")), "다음에.", "2장 끝!", "달빛 카드"),
     ),
 )
