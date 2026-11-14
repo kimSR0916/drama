@@ -39,7 +39,7 @@ fun matchChoice(heard: String, branch: Branch): RouteHint? {
     }
 }
 
-class Voice(context: Context, private val onHeard: (String) -> Unit) {
+class Voice(context: Context, private val onHeard: (String) -> Unit, private val onSpeaking: (String?) -> Unit) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var pleosTts: TextToSpeech? = TextToSpeech(context, TtsMode.ON_DEVICE)
     private var pleosTtsReady = false
@@ -55,6 +55,7 @@ class Voice(context: Context, private val onHeard: (String) -> Unit) {
         if (current != null) return
         val text = queue.removeFirstOrNull()
         if (text == null) {
+            onSpeaking(null)
             if (listenWhenQuiet) {
                 listenWhenQuiet = false
                 requestStt()
@@ -67,6 +68,7 @@ class Voice(context: Context, private val onHeard: (String) -> Unit) {
     }
 
     private fun start(text: String) {
+        onSpeaking(text)
         val started = (pleosTtsReady && runCatching { pleosTts?.speak(text, true) }.isSuccess) ||
             fallback?.speak(text, AndroidTts.QUEUE_FLUSH, null, text.hashCode().toString()) == AndroidTts.SUCCESS
         if (!started) onSpeechDone()
@@ -139,6 +141,7 @@ class Voice(context: Context, private val onHeard: (String) -> Unit) {
     }
 
     fun stopSpeaking() {
+        onSpeaking(null)
         queue.clear()
         current = null
         mainHandler.removeCallbacks(watchdog)

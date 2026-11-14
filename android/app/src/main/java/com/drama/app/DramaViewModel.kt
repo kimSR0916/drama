@@ -56,6 +56,7 @@ data class UiState(
     val authoringIssues: List<String> = emptyList(),
     val sosLocked: Boolean = false,
     val answerSecondsLeft: Int? = null,
+    val speaking: String? = null,
 )
 
 class DramaViewModel(app: Application) : AndroidViewModel(app) {
@@ -70,7 +71,7 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { block() }
     }
 
-    private val voice = Voice(app) { heard -> onMain { onHeard(heard) } }
+    private val voice = Voice(app, onHeard = { heard -> onMain { onHeard(heard) } }, onSpeaking = { text -> onMain { post { it.copy(speaking = text) } } })
     private val navi = NaviSignals(
         app,
         clock = ::now,

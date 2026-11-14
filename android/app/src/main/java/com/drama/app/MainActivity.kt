@@ -97,7 +97,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(primary = Accent, background = Color(0xFF0B1120), surface = Color(0xFF0B1120))) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    App(vm, handOffToSystemSos = { moveTaskToBack(true) })
+                    App(vm)
                 }
             }
         }
@@ -105,13 +105,12 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun App(vm: DramaViewModel, handOffToSystemSos: () -> Unit) {
+private fun App(vm: DramaViewModel) {
     val ui by vm.ui.collectAsState()
     val s = ui.session
     var authoring by remember { mutableStateOf(false) }
     var showLog by remember { mutableStateOf(false) }
     LaunchedEffect(ui.systemUxRestricted) { if (ui.systemUxRestricted) authoring = false }
-    LaunchedEffect(ui.sosLocked) { if (ui.sosLocked) handOffToSystemSos() }
     LaunchedEffect(s.drive) { if (s.drive != null && s.report == null) showLog = false }
 
     when {
@@ -303,7 +302,7 @@ private fun DriveScreen(vm: DramaViewModel, ui: UiState) {
 @Composable
 private fun FloatingBar(ui: UiState, scenario: Scenario?) {
     val s = ui.session
-    val line = s.subtitle?.takeIf { it.speaker != Speaker.DRIVER }?.text ?: ""
+    val line = ui.speaking ?: s.subtitle?.takeIf { it.speaker != Speaker.DRIVER }?.text ?: ""
     Row(
         Modifier.fillMaxWidth().background(Color(0xE60B1120), RoundedCornerShape(28.dp)).padding(horizontal = 20.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,

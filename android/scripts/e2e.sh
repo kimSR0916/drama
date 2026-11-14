@@ -81,10 +81,8 @@ tap "8분"
 tap "주행 시작"
 expect "접선지에서 받은 열쇠"
 tap "에어백 전개"
-sleep 2
-"$ADB" shell dumpsys activity activities | grep -q "topResumedActivity=.*com.drama.app" && { echo "FAIL: app stayed in front after SOS" >&2; exit 1; }
-echo "ok: handed off to system SOS"
-"$ADB" shell am start -n com.drama.app/.MainActivity >/dev/null
 expect "긴급 상황이 감지되어"
+ui | grep -q 'text="기어 P"' && { echo "FAIL: controls still reachable after SOS" >&2; exit 1; }
+echo "ok: session locked with no controls"
 shot 8-sos-locked
 echo "e2e passed; screenshots in $OUT"
