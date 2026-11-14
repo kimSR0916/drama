@@ -88,13 +88,13 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
         onUxRestricted = { restricted -> onMain { post { it.copy(systemUxRestricted = restricted) } } },
     )
 
-    private val session = Session(store, object : Outputs {
+    private val session: Session = Session(store, object : Outputs {
         override fun speak(text: String) = voice.speak(text)
         override fun stopAllAudio() = voice.stopSpeaking()
         override fun bgm(on: Boolean) = Unit
         override fun reroute(prefer: RouteHint) = navi.reroute(prefer)
         override fun sos(cause: EmergencyCause) = post { it.copy(sosLocked = true) }
-        override fun listenForChoice(branch: Branch) = voice.listen()
+        override fun listenForChoice(branch: Branch) = voice.listen { onMain { session.send(DriveEvent.QuestionSpoken(now())); refresh() } }
         override fun stopListening() = voice.stopListening()
     }, clock = ::now)
 

@@ -3,6 +3,7 @@ package com.drama.app.core
 const val ARRIVAL_LEAD_MINUTES = 1.0
 const val REACTION_COOLDOWN_MS = 30_000L
 const val ANSWER_WINDOW_MS = 5_000L
+const val QUESTION_SPEECH_CAP_MS = 30_000L
 const val SPEECH_MS_PER_CHAR = 110L
 const val LEAD_SILENCE_MS = 200L
 
@@ -21,6 +22,7 @@ sealed interface DriveEvent {
     data class Congestion(override val now: Long) : DriveEvent
     data class RouteGuidance(val instruction: String, override val now: Long) : DriveEvent
     data class DriverInput(val hint: RouteHint, val via: InputVia, override val now: Long) : DriveEvent
+    data class QuestionSpoken(override val now: Long) : DriveEvent
     data class Emergency(val cause: EmergencyCause, override val now: Long) : DriveEvent
     data class GearChanged(val gear: Gear, override val now: Long) : DriveEvent
 }
@@ -40,7 +42,7 @@ sealed interface Effect {
 
 const val TIMEOUT_FLAG = "TIMEOUT"
 
-data class PendingChoice(val beatId: String, val branch: Branch, val deadline: Long)
+data class PendingChoice(val beatId: String, val branch: Branch, val deadline: Long, val spoken: Boolean = false)
 
 data class Trip(
     val scenario: Scenario,
@@ -95,7 +97,7 @@ private fun playNextBeat(trip: Trip, now: Long): Step {
     val effects = mutableListOf<Effect>(say(Speaker.CHARACTER, beat.line))
     val pending = beat.branch?.let {
         effects += Effect.ShowChoices(it)
-        PendingChoice(beat.id, it, now + speechMs(beat.line) + ANSWER_WINDOW_MS)
+        PendingChoice(beat.id, it, now + speechMs(beat.line) + QUESTION_SPEECH_CAP_MS)
     }
     return Step(DriveState.Driving(trip.copy(played = trip.played + 1, lastBeatEta = trip.etaMinutes, pending = pending)), effects)
 }
@@ -193,6 +195,11 @@ private fun driving(trip: Trip, event: DriveEvent): Step {
         }
         is DriveEvent.RouteGuidance -> stay(trip, listOf(say(Speaker.CHARACTER, event.instruction)))
         is DriveEvent.DriverInput -> choose(trip, event.hint)
+        is DriveEvent.QuestionSpoken -> {
+            val pending = trip.pending
+            if (pending == null || pending.spoken) stay(trip)
+            else stay(trip.copy(pending = pending.copy(deadline = event.now + ANSWER_WINDOW_MS, spoken = true)))
+        }
         is DriveEvent.GearChanged -> {
             if (event.gear != Gear.P) {
                 stay(trip)

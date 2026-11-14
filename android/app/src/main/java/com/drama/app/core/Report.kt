@@ -45,7 +45,7 @@ data class DriveReport(
 fun safetyScore(harsh: Map<HarshKind, Int>): Int = max(0, 100 - HARSH_PENALTY * harsh.values.sum())
 
 fun bondGain(playedBeats: Int, answered: Int, safetyScore: Int): Int =
-    playedBeats * BOND_PER_SCENE + answered * BOND_PER_ANSWER + if (safetyScore >= SAFE_DRIVER_SCORE) BOND_SAFE_BONUS else 0
+    playedBeats * BOND_PER_SCENE + answered * BOND_PER_ANSWER + if (playedBeats > 0 && safetyScore >= SAFE_DRIVER_SCORE) BOND_SAFE_BONUS else 0
 
 fun buildReport(
     scenario: Scenario,

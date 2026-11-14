@@ -28,7 +28,8 @@ class DriveTest {
 
     private fun spoken(effects: List<Effect>) = effects.filterIsInstance<Effect.Speak>().map { it.text }
     private val question = "매복이다! 우회로로 빠질까, 직진할까?"
-    private val deadline = speechMs(question) + ANSWER_WINDOW_MS
+    private val spokenAt = 4_000L
+    private val deadline = spokenAt + ANSWER_WINDOW_MS
 
     @Test fun shortTripAsksTheCoreQuestionAndShowsTwoChoices() {
         val (_, effects) = feed(begin(8.0), DriveEvent.Congestion(1000))
@@ -43,12 +44,25 @@ class DriveTest {
     }
 
     @Test fun silenceForFiveSecondsAfterTheQuestionKeepsTheRouteWithTheBridgeLine() {
-        val (_, early) = feed(begin(8.0), DriveEvent.Congestion(0), DriveEvent.Tick(deadline - 1, 7.0))
+        val (_, early) = feed(begin(8.0), DriveEvent.Congestion(0), DriveEvent.QuestionSpoken(spokenAt), DriveEvent.Tick(deadline - 1, 7.0))
         assertFalse("답이 없군. 원래 길로 가지." in spoken(early))
-        val (state, late) = feed(begin(8.0), DriveEvent.Congestion(0), DriveEvent.Tick(deadline, 7.0))
+        val (state, late) = feed(begin(8.0), DriveEvent.Congestion(0), DriveEvent.QuestionSpoken(spokenAt), DriveEvent.Tick(deadline, 7.0))
         assertTrue("답이 없군. 원래 길로 가지." in spoken(late))
         assertEquals(Effect.Reroute(RouteHint.KEEP), late.last())
         assertEquals(TIMEOUT_FLAG, (state as DriveState.Driving).trip.flags["s2"])
+    }
+
+    @Test fun theAnswerWindowWaitsForQueuedSpeechEvenIfItRunsLong() {
+        val (state, effects) = feed(begin(8.0), DriveEvent.Congestion(0), DriveEvent.Tick(15_000, 7.0))
+        assertFalse("답이 없군. 원래 길로 가지." in spoken(effects))
+        assertTrue((state as DriveState.Driving).trip.pending != null)
+        val (_, capped) = feed(begin(8.0), DriveEvent.Congestion(0), DriveEvent.Tick(speechMs(question) + QUESTION_SPEECH_CAP_MS, 7.0))
+        assertTrue("답이 없군. 원래 길로 가지." in spoken(capped))
+    }
+
+    @Test fun parkingWithoutAnySceneEarnsNoBond() {
+        val (state, _) = feed(begin(30.0), DriveEvent.GearChanged(Gear.P, 1000))
+        assertEquals(0, (state as DriveState.Parked).report.bondAfter.points)
     }
 
     @Test fun reactionsHaveACooldownButEveryHarshEventCounts() {

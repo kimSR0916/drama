@@ -150,15 +150,21 @@ class Voice(context: Context, private val onHeard: (String) -> Unit, private val
         fallback?.stop()
     }
 
-    fun listen() {
+    private var onQuiet: (() -> Unit)? = null
+
+    fun listen(onQuestionSpoken: () -> Unit) {
+        onQuiet = onQuestionSpoken
         if (current == null && queue.isEmpty()) requestStt() else listenWhenQuiet = true
     }
 
     private fun requestStt() {
+        onQuiet?.invoke()
+        onQuiet = null
         if (sttReady) runCatching { stt.request() }.onFailure { Log.w(TAG, "STT request failed", it) }
     }
 
     fun stopListening() {
+        onQuiet = null
         listenWhenQuiet = false
         if (sttReady) runCatching { stt.stop() }
     }

@@ -30,6 +30,12 @@ class PreDriveTest {
         assertEquals(40, ready.save.bond)
     }
 
+    @Test fun resumeAtAChapterStartStillPlaysTheRecap() {
+        val atChapterTwo = midSave.copy(cursor = Cursor(1, 0))
+        val s = run(PreDriveEvent.SelectStory(fixture, atChapterTwo), PreDriveEvent.Answer(true, 5), PreDriveEvent.SetDestination(25.0))
+        assertEquals("지난 이야기: 은신처에 왔다.", (s as PreDriveState.Ready).plan.opening)
+    }
+
     @Test fun restartClearsProgressButKeepsBondAndDecliningBothReturnsToSelect() {
         val restarted = run(PreDriveEvent.SelectStory(fixture, midSave), PreDriveEvent.Answer(false, 5), PreDriveEvent.Answer(true, 7))
         assertEquals(SaveData("s1", Cursor.START, emptyMap(), 40, 7), (restarted as PreDriveState.AwaitingDestination).save)

@@ -79,7 +79,7 @@ expect "이어서 하시겠습니까?"
 tap "예"
 tap "8분"
 tap "주행 시작"
-expect "접선지에서 받은 열쇠"
+expect "지난 이야기: 제1 접선지에서"
 tap "에어백 전개"
 expect "긴급 상황이 감지되어"
 ui | grep -q 'text="기어 P"' && { echo "FAIL: controls still reachable after SOS" >&2; exit 1; }

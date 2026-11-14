@@ -15,7 +15,7 @@ data class DrivePlan(
 fun pacingMode(etaMinutes: Double): PacingMode =
     if (etaMinutes < SHORT_TRIP_MINUTES) PacingMode.SHORT else PacingMode.FULL
 
-fun planDrive(scenario: Scenario, cursor: Cursor, etaMinutes: Double): DrivePlan? {
+fun planDrive(scenario: Scenario, cursor: Cursor, etaMinutes: Double, resumed: Boolean = false): DrivePlan? {
     val chapter = scenario.chapters.getOrNull(cursor.chapter) ?: return null
     val mode = pacingMode(etaMinutes)
     val remaining = chapter.beats.withIndex().drop(cursor.beat).map { PlannedBeat(it.index, it.value) }
@@ -23,7 +23,7 @@ fun planDrive(scenario: Scenario, cursor: Cursor, etaMinutes: Double): DrivePlan
         PacingMode.FULL -> remaining
         PacingMode.SHORT -> listOfNotNull(remaining.firstOrNull { it.beat.kind == SceneKind.CORE } ?: remaining.firstOrNull())
     }
-    return DrivePlan(mode, if (cursor.beat == 0) chapter.opening else chapter.recap, beats)
+    return DrivePlan(mode, if (resumed || cursor.beat > 0) chapter.recap else chapter.opening, beats)
 }
 
 object Prompts {
@@ -84,7 +84,7 @@ fun preDrive(state: PreDriveState, event: PreDriveEvent): PreDriveState = when (
             is PreDriveState.Ready -> Triple(state.scenario, state.save, state.resumed)
             else -> null
         }
-        val plan = target?.takeIf { event.etaMinutes > 0 }?.let { planDrive(it.first, it.second.cursor, event.etaMinutes) }
+        val plan = target?.takeIf { event.etaMinutes > 0 }?.let { planDrive(it.first, it.second.cursor, event.etaMinutes, it.third) }
         if (target == null || plan == null) state
         else PreDriveState.Ready(target.first, target.second, target.third, event.etaMinutes, plan)
     }

@@ -68,7 +68,7 @@ cd android
 | 주행 중 | 정체 구간 진입 시 다음 장면을 앞당겨 들려줌 | NaviHelper `onRouteStateInfo.trafficStatus` |
 | 주행 중 | 턴바이턴 안내를 캐릭터 목소리로 전달 | NaviHelper `onTBTInfo` |
 | 주행 중 | 내비를 가리지 않는 상단 플로팅 바에 캐릭터 픽토그램과 지금 읽는 한 줄 자막만 표시. 대사는 200ms 선행 묵음 뒤 한 줄씩 차례로 읽음 | Pleos TextToSpeech (ON_DEVICE, ko-KR) |
-| 주행 중 | 선택지가 나오면 화면 하단에 A(우회)와 B(기존 경로 유지) 2분할 빅버튼 표시. 질문이 끝난 뒤 음성 키워드로 답할 수 있고, 5초 동안 답이 없으면 B를 고르고 무응답 대사를 읽음 | Pleos SpeechToText (ON_DEVICE, ko-KR) |
+| 주행 중 | 선택지가 나오면 화면 하단에 A(우회)와 B(기존 경로 유지) 2분할 빅버튼 표시. 질문(과 그 앞에 쌓인 대사)을 다 읽은 순간부터 5초를 세고, 그동안 음성 키워드나 버튼으로 답할 수 있음. 답이 없으면 B를 고르고 무응답 대사를 읽음 | Pleos SpeechToText (ON_DEVICE, ko-KR) |
 | 주행 중 | 우회를 고르면 경로 재탐색. 운전자가 직접 고른 경우에만 하고, 경로 안내 중일 때만 합니다 | NaviHelper `changeRouteOption`, `requestReRoute` |
 | 주행 중 | 주행 제한 상태 표시와 큰 버튼 위주 UI | `CarUxRestrictionsManager` |
 | 비상 | 운전석 에어백 전개 시 음성과 BGM을 즉시 끄고 진행 기록을 저장. 팝업 없이 조작 요소가 없는 잠금 화면으로 바뀌고, P단을 체결해도 세션이 다시 열리지 않음. 그 위로 차량 순정 SOS 화면이 뜨는 구조 | Vehicle Safety `registerSeatAirbagDeployed` |
@@ -85,7 +85,7 @@ cd android
 
 ## 검증
 
-- 단위 테스트는 23개입니다. `scenarios.json` 전체가 기획 규칙을 지키는지도 검사합니다. 엔진, 작성, 저장소, 음성 매칭, 급가감속 판정을 다룹니다. 실행 명령은 `./gradlew :app:testReleaseUnitTest`입니다.
+- 단위 테스트는 26개입니다. `scenarios.json` 전체가 기획 규칙을 지키는지도 검사합니다. 엔진, 작성, 저장소, 음성 매칭, 급가감속 판정을 다룹니다. 실행 명령은 `./gradlew :app:testReleaseUnitTest`입니다.
 - 에뮬레이터 E2E는 `android/scripts/e2e.sh`입니다. Pleos Connect v2.1.0 에뮬레이터에서 아래 흐름을 실제로 탭하며 검증합니다.
   1. "사라진 연구원" 선택, 시작하기, 15분 주행
   2. 우회 선택, 급제동 반응, 정체 반응
@@ -93,6 +93,9 @@ cd android
   4. 이어하기로 2장 시작, 에어백 SOS 후 잠금 유지
 
 ## 알려진 한계
+
+- 시연 모드(기본값)에서는 주행 화면 아래에 차량 신호 버튼 줄이 함께 보입니다. 에뮬레이터에서 급제동, 정체, 기어, 에어백을 흉내 내기 위한 것입니다. 시연 모드를 끄면 기획서대로 상단 플로팅 바와 선택지 빅버튼만 남습니다.
+- Figma 시안은 반영하지 못했습니다. 화면은 기획서의 화면 구성 설명을 따랐습니다.
 
 - 이 에뮬레이터에는 `hmg_car_service`가 없어서 시스템 주행 제한(`CarUxRestrictionsManager`)을 켤 수 없습니다. 그래서 E2E는 주행 제한 상태를 검증하지 않습니다. 정차 중에만 열리는 시나리오 작성 화면은 시스템 제한이 켜지면 바로 닫힙니다.
 
