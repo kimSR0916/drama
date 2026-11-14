@@ -123,7 +123,7 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
             session = session.view,
             stories = store.listScenarios().sortedBy { s -> if (s.source == ScenarioSource.CUSTOM) -1 else builtins.indexOfFirst { it.id == s.id } },
             naviEtaMinutes = naviFresh(),
-            answerSecondsLeft = (session.view.drive as? DriveState.Driving)?.trip?.pending?.let { p -> ((p.deadline - now() + 999) / 1000).toInt().coerceAtLeast(0) },
+            answerSecondsLeft = (session.view.drive as? DriveState.Driving)?.trip?.pending?.takeIf { it.spoken }?.let { p -> ((p.deadline - now() + 999) / 1000).toInt().coerceAtLeast(0) },
         )
     }
 
