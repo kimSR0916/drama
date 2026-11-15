@@ -11,6 +11,7 @@ import com.drama.app.core.EmergencyCause
 import com.drama.app.core.PreDriveEvent
 import com.drama.app.core.PreDriveState
 import com.drama.app.core.RouteHint
+import com.drama.app.core.Slot
 import com.drama.app.core.Speaker
 import com.drama.app.core.drive
 import com.drama.app.core.preDrive
@@ -39,7 +40,12 @@ interface Outputs {
     fun stopListening()
 }
 
-class Session(private val store: AccountStore, private val outputs: Outputs, private val clock: () -> Long) {
+class Session(
+    private val store: AccountStore,
+    private val outputs: Outputs,
+    private val clock: () -> Long,
+    private val generated: (Slot) -> String? = { null },
+) {
     var view = SessionView()
         private set
 
@@ -62,7 +68,7 @@ class Session(private val store: AccountStore, private val outputs: Outputs, pri
 
     private fun apply(effects: List<Effect>) {
         for (e in effects) when (e) {
-            is Effect.Speak -> log(LogEntry(e.speaker, e.text))
+            is Effect.Speak -> log(LogEntry(e.speaker, e.slot?.let(generated) ?: e.text))
             is Effect.Bgm -> {
                 view = view.copy(bgm = e.on)
                 outputs.bgm(e.on)
@@ -124,6 +130,27 @@ class Session(private val store: AccountStore, private val outputs: Outputs, pri
         val step = drive(current, event)
         view = view.copy(drive = step.state)
         apply(step.effects)
+    }
+
+    private val canTalk: Boolean
+        get() = view.sos == null && (view.drive is DriveState.Driving || view.drive is DriveState.Arrived)
+
+    fun driverSaid(text: String): Boolean {
+        if (!canTalk || view.choices != null) return false
+        log(LogEntry(Speaker.DRIVER, text))
+        return true
+    }
+
+    val tripStartedAt: Long?
+        get() = when (val d = view.drive) {
+            is DriveState.Driving -> d.trip.startedAt
+            is DriveState.Arrived -> d.trip.startedAt
+            else -> null
+        }
+
+    /** A reply that arrives after a route question opened, or after its drive ended, is dropped. */
+    fun characterReplied(text: String, forTrip: Long) {
+        if (canTalk && view.choices == null && tripStartedAt == forTrip) log(LogEntry(Speaker.CHARACTER, text))
     }
 
     fun reset() {

@@ -5,7 +5,7 @@ import kotlin.math.roundToInt
 
 enum class HarshKind { ACCEL, BRAKE, TURN }
 
-const val HARSH_PENALTY = 4
+const val HARSH_PENALTY = 3
 const val BOND_PER_LEVEL = 50
 const val BOND_PER_SCENE = 3
 const val BOND_PER_ANSWER = 5

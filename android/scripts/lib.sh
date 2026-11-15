@@ -8,7 +8,7 @@ ui() { "$ADB" shell uiautomator dump /sdcard/ui.xml >/dev/null && "$ADB" shell c
 tap() {
   local label bounds
   label=$(printf '%s' "$1" | sed 's/[][().*+?^$|\\{}]/\\&/g')
-  for _ in 1 2 3 4 5; do
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
     bounds=$(ui | grep -oE "text=\"$label\"[^>]*bounds=\"\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]\"" | head -1 | grep -oE '\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]' || true)
     [ -n "$bounds" ] && break
     sleep 1
@@ -21,10 +21,11 @@ tap() {
 
 expect() {
   for _ in $(seq 1 "${2:-10}"); do
-    ui | grep -q "$1" && { echo "ok: $1"; return; }
+    grep -q "$1" <<<"$(ui)" && { echo "ok: $1"; return; }
     sleep 1
   done
-  echo "FAIL: expected '$1'" >&2
+  echo "FAIL: expected '$1'; on screen:" >&2
+  ui | grep -oE 'text="[^"]+"' | head -12 >&2
   exit 1
 }
 
@@ -42,15 +43,21 @@ fresh() {
   "$ADB" shell pm clear --user current com.drama.app >/dev/null
   grant
   launch
-  expect "오늘은 어떤 이야기를 달릴까요?"
+  tap "계정 연결"
+  expect "내 테마"
+}
+
+pick() {
+  tap "$1"
+  tap "이 테마 사용"
 }
 
 absent() {
-  ui | grep -q "$1" && { echo "FAIL: '$1' should not be on screen" >&2; exit 1; }
+  grep -q "$1" <<<"$(ui)" && { echo "FAIL: '$1' should not be on screen" >&2; exit 1; }
   echo "ok: no $1"
 }
 
 crashed() {
-  "$ADB" logcat -d -b crash | grep -q "com.drama.app" && { "$ADB" logcat -d -b crash | tail -30 >&2; echo "FAIL: app crashed" >&2; exit 1; }
+  grep -q "com.drama.app" <<<"$("$ADB" logcat -d -b crash)" && { "$ADB" logcat -d -b crash | tail -30 >&2; echo "FAIL: app crashed" >&2; exit 1; }
   echo "ok: no crash"
 }

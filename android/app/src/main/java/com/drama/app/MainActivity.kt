@@ -7,8 +7,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +24,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -29,6 +32,8 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
@@ -47,36 +52,48 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.drama.app.authoring.LogEntry
 import com.drama.app.core.Branch
 import com.drama.app.core.CardTier
+import com.drama.app.core.Cursor
 import com.drama.app.core.DriveState
 import com.drama.app.core.EmergencyCause
 import com.drama.app.core.Gear
+import com.drama.app.core.HARSH_PENALTY
 import com.drama.app.core.HarshKind
 import com.drama.app.core.PacingMode
 import com.drama.app.core.PreDriveState
 import com.drama.app.core.Prompts
 import com.drama.app.core.RouteHint
+import com.drama.app.core.SaveData
 import com.drama.app.core.Scenario
 import com.drama.app.core.ScenarioSource
 import com.drama.app.core.Speaker
+import com.drama.app.core.planDrive
 import kotlin.math.ceil
 
-private val Accent = Color(0xFF4C8DFF)
-private val Danger = Color(0xFFE5483B)
-private val Panel = Color(0xFF172033)
-private val Muted = Color(0xFF9AA6BA)
-private val MapBase = Color(0xFF1B2638)
-private val MapRoad = Color(0xFF2C3A52)
+private val Bg = Color(0xFF0B0E11)
+private val Surface0 = Color(0xFF15181E)
+private val Panel = Color(0xFF282C35)
+private val Line = Color(0xFF3A424E)
+private val Accent = Color(0xFF0088FF)
+private val Danger = Color(0xFFFF4A35)
+private val Muted = Color(0xFFB7BBC4)
+private val Good = Color(0xFF1F7A4D)
+private val SubtitleBar = listOf(Color(0xEC247E91), Color(0xE82A7F8C))
 
 class MainActivity : ComponentActivity() {
     private val vm: DramaViewModel by viewModels()
@@ -95,10 +112,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO, "android.car.permission.CAR_SPEED"), 0)
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme(primary = Accent, background = Color(0xFF0B1120), surface = Color(0xFF0B1120))) {
-                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    App(vm)
-                }
+            MaterialTheme(colorScheme = darkColorScheme(primary = Accent, background = Bg, surface = Bg)) {
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { App(vm) }
             }
         }
     }
@@ -110,21 +125,30 @@ private fun App(vm: DramaViewModel) {
     val s = ui.session
     var authoring by remember { mutableStateOf(false) }
     var showLog by remember { mutableStateOf(false) }
-    LaunchedEffect(ui.systemUxRestricted) { if (ui.systemUxRestricted) authoring = false }
+    var aiSettings by remember { mutableStateOf(false) }
+    LaunchedEffect(ui.systemUxRestricted) {
+        if (ui.systemUxRestricted) {
+            authoring = false
+            aiSettings = false
+        }
+    }
+    LaunchedEffect(ui.aiCreatedId) { if (ui.aiCreatedId != null) authoring = false }
     LaunchedEffect(s.drive) { if (s.drive != null && s.report == null) showLog = false }
 
     when {
-        ui.sosLocked -> LockedScreen()
+        ui.sosLocked -> EmergencyScreen()
         s.drive != null && s.report == null -> DriveScreen(vm, ui)
-        else -> Column(Modifier.fillMaxSize().padding(32.dp)) {
-            StatusBar(ui)
-            Spacer(Modifier.height(20.dp))
+        else -> Column(Modifier.fillMaxSize().background(Surface0).padding(horizontal = 40.dp, vertical = 28.dp)) {
+            Header(ui)
+            Spacer(Modifier.height(24.dp))
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when {
+                    !ui.linked -> LinkScreen(vm)
                     showLog -> LogScreen(ui) { showLog = false }
                     s.report != null -> ReportScreen(vm, ui) { showLog = true }
-                    authoring -> AuthoringScreen(vm, ui) { authoring = false }
-                    else -> PreDriveScreen(vm, ui, openAuthoring = { authoring = true }, openLog = { showLog = true })
+                    aiSettings -> AiSettingsScreen(vm, ui) { aiSettings = false }
+                    authoring -> AuthoringScreen(vm, ui, openAiSettings = { aiSettings = true }) { authoring = false }
+                    else -> PreDriveScreen(vm, ui, openAuthoring = { authoring = true }, openLog = { showLog = true }, openAiSettings = { aiSettings = true })
                 }
             }
         }
@@ -132,11 +156,30 @@ private fun App(vm: DramaViewModel) {
 }
 
 @Composable
-private fun StatusBar(ui: UiState) {
-    Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("드라마", fontSize = 30.sp, fontWeight = FontWeight.Bold)
-        Chip(if (ui.systemUxRestricted) "주행 제한 활성" else "정차 중 · P", Panel)
-        if (ui.demoMode) Chip("시연 모드 ${DEMO_SPEED}배속", Color(0xFF5B3DB8))
+private fun Waveform(color: Color, modifier: Modifier = Modifier, bars: Int = 9) {
+    val heights = listOf(0.35f, 0.6f, 0.9f, 0.5f, 1f, 0.55f, 0.85f, 0.45f, 0.3f, 0.7f, 0.5f, 0.95f, 0.4f, 0.65f, 0.3f)
+    Canvas(modifier.width((bars * 9).dp).height(40.dp)) {
+        val gap = size.width / bars
+        repeat(bars) { i ->
+            val h = size.height * heights[i % heights.size]
+            drawLine(color, Offset(gap * i + gap / 2, (size.height - h) / 2), Offset(gap * i + gap / 2, (size.height + h) / 2), strokeWidth = gap * 0.45f, cap = StrokeCap.Round)
+        }
+    }
+}
+
+@Composable
+private fun Header(ui: UiState) {
+    Column {
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Waveform(Accent, bars = 5)
+            Text("드라이브 스토리", fontSize = 30.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            Chip(if (ui.systemUxRestricted) "주행 제한 활성" else "정차 중 · P", Panel)
+            Chip(if (ui.aiEnabled) "AI 켜짐" else "AI 꺼짐", if (ui.aiEnabled) Good else Panel)
+            if (ui.demoMode) Chip("시연 모드 ${DEMO_SPEED}배속", Color(0xFF3B2F7A))
+        }
+        Spacer(Modifier.height(18.dp))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
     }
 }
 
@@ -148,22 +191,32 @@ private fun Chip(text: String, color: Color) {
 }
 
 @Composable
-private fun BigButton(text: String, color: Color = Accent, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun BigButton(text: String, color: Color = Accent, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
     Button(
         onClick = onClick,
-        modifier = modifier.heightIn(min = 88.dp),
-        shape = RoundedCornerShape(18.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = color, contentColor = Color.White),
-    ) { Text(text, fontSize = 28.sp, fontWeight = FontWeight.SemiBold) }
+        enabled = enabled,
+        modifier = modifier.heightIn(min = 96.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = color, contentColor = Color.White, disabledContainerColor = Panel, disabledContentColor = Muted),
+    ) { Text(text, fontSize = 32.sp, fontWeight = FontWeight.SemiBold) }
 }
 
 @Composable
-private fun Title(text: String) = Text(text, fontSize = 40.sp, fontWeight = FontWeight.Bold)
+private fun Title(text: String) = Text(text, fontSize = 54.sp, fontWeight = FontWeight.Bold)
 
 @Composable
 private fun Pictogram(scenario: Scenario?, size: Int) {
+    if (scenario?.id == "missing-researcher" && scenario.source != ScenarioSource.CUSTOM) {
+        Image(
+            painterResource(if (size <= 140) R.drawable.design_story_thumbnail else R.drawable.design_story_cover),
+            contentDescription = null,
+            modifier = Modifier.size(width = (if (size <= 140) size * 1.5f else size.toFloat()).dp, height = size.dp).clip(RoundedCornerShape(20.dp)),
+            contentScale = ContentScale.Crop,
+        )
+        return
+    }
     Box(
-        Modifier.size(size.dp).background(Brush.linearGradient(listOf(Color(0xFF6A4CFF), Color(0xFF0A9BD3))), CircleShape),
+        Modifier.size(size.dp).background(Brush.linearGradient(listOf(Color(0xFF273342), Color(0xFF182431))), RoundedCornerShape(20.dp)),
         contentAlignment = Alignment.Center,
     ) { Text(scenario?.persona?.icon ?: "🎭", fontSize = (size * 0.5).sp) }
 }
@@ -178,207 +231,383 @@ private fun PreDriveState.scenarioOrNull(): Scenario? = when (this) {
 }
 
 @Composable
-private fun PreDriveScreen(vm: DramaViewModel, ui: UiState, openAuthoring: () -> Unit, openLog: () -> Unit) {
-    val p = ui.session.pre
-    val hasLog = ui.session.log.isNotEmpty()
-    when (p) {
-        PreDriveState.Selecting -> Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Title("오늘은 어떤 이야기를 달릴까요?")
-                Spacer(Modifier.weight(1f))
-                if (!ui.systemUxRestricted) BigButton("내 시나리오 만들기", Panel, onClick = openAuthoring)
+private fun LinkScreen(vm: DramaViewModel) {
+    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Text("모바일 테마를 불러오세요", fontSize = 72.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(12.dp))
+        Text("모바일에서 사용한 계정으로 연결하세요.", fontSize = 36.sp, color = Muted)
+        Spacer(Modifier.height(36.dp))
+        Image(painterResource(R.drawable.design_link), contentDescription = null, modifier = Modifier.size(width = 140.dp, height = 280.dp))
+        Spacer(Modifier.height(36.dp))
+        BigButton("계정 연결", modifier = Modifier.widthIn(max = 620.dp).fillMaxWidth()) { vm.linkAccount() }
+    }
+}
+
+private fun genreOf(s: Scenario) = if (s.source == ScenarioSource.CUSTOM) "커스텀" else s.genre
+
+@Composable
+private fun ThemeList(vm: DramaViewModel, ui: UiState, openAuthoring: () -> Unit, openAiSettings: () -> Unit) {
+    val tabs = listOf("전체") + ui.stories.map(::genreOf).distinct()
+    var tab by remember { mutableStateOf("전체") }
+    val shown = ui.stories.filter { tab == "전체" || genreOf(it) == tab }
+    var selected by remember { mutableStateOf<String?>(null) }
+    val current = shown.firstOrNull { it.id == selected } ?: shown.firstOrNull()
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        Title("내 테마")
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            tabs.forEach { t ->
+                val on = t == tab
+                Button(
+                    onClick = { tab = t },
+                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (on) Color.White else Color.Transparent, contentColor = if (on) Color.Black else Color.White),
+                ) { Text(t, fontSize = 28.sp, fontWeight = FontWeight.Bold) }
             }
-            Spacer(Modifier.height(24.dp))
-            LazyVerticalGrid(GridCells.Fixed(3), horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                items(ui.stories, key = { it.id }) { story ->
-                    Button(
-                        onClick = { vm.selectStory(story.id) },
-                        shape = RoundedCornerShape(20.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Color.White),
-                        modifier = Modifier.heightIn(min = 220.dp),
-                    ) {
-                        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Pictogram(story, 52)
-                                Text(if (story.source == ScenarioSource.CUSTOM) "내 시나리오" else story.genre, color = Muted, fontSize = 18.sp)
-                            }
-                            Text(story.title, fontSize = 28.sp, fontWeight = FontWeight.Bold, maxLines = 2)
-                            Text(story.premise, fontSize = 17.sp, color = Muted, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        }
+        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            items(shown, key = { it.id }) { story ->
+                val on = story.id == current?.id
+                Button(
+                    onClick = { selected = story.id },
+                    shape = RoundedCornerShape(18.dp),
+                    border = BorderStroke(2.dp, if (on) Accent else Line),
+                    colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Color.White),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 144.dp),
+                ) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                        Pictogram(story, 104)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(story.title, fontSize = 38.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(story.premise, fontSize = 26.sp, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
+                        Text("›", fontSize = 40.sp)
                     }
                 }
             }
         }
-        is PreDriveState.OfferNew -> Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                Pictogram(p.scenario, 96)
-                Column {
-                    Text(p.scenario.genre, color = Muted, fontSize = 20.sp)
-                    Title(p.scenario.title)
-                }
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (!ui.systemUxRestricted) {
+                BigButton("AI 설정", Panel, onClick = openAiSettings)
+                BigButton("내 시나리오 만들기", Panel, onClick = openAuthoring)
             }
-            Text(p.scenario.premise, fontSize = 24.sp, color = Muted)
-            Text("${p.scenario.persona.name} · ${p.scenario.persona.tone}", fontSize = 22.sp)
-            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                BigButton("시작하기") { vm.startNew() }
-                BigButton("뒤로", Panel) { vm.back() }
-            }
+            Spacer(Modifier.weight(1f))
+            BigButton("이 테마 사용", modifier = Modifier.widthIn(max = 420.dp).weight(1f), enabled = current != null) { current?.let { vm.selectStory(it.id) } }
         }
-        is PreDriveState.AskResume, is PreDriveState.AskRestart -> Column(verticalArrangement = Arrangement.spacedBy(28.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                Pictogram(p.scenarioOrNull(), 96)
-                Column {
-                    Text(p.scenarioOrNull()?.title.orEmpty(), color = Muted, fontSize = 22.sp)
-                    Title(if (p is PreDriveState.AskResume) Prompts.ASK_RESUME else Prompts.ASK_RESTART)
-                }
-            }
-            if (p is PreDriveState.AskResume) {
-                val chapter = p.scenario.chapters.getOrNull(p.save.cursor.chapter)
-                Text("${chapter?.title.orEmpty()} · 진행률 ${p.scenario.progressPercent(p.save.cursor)}%", fontSize = 24.sp)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                BigButton("예", modifier = Modifier.width(240.dp)) { vm.answer(true) }
-                BigButton("아니오", Panel, Modifier.width(240.dp)) { vm.answer(false) }
-                if (hasLog && p is PreDriveState.AskResume) BigButton("이전 대화 기록", Panel, onClick = openLog)
-            }
+    }
+}
+
+@Composable
+private fun Bubble(e: LogEntry) {
+    val mine = e.speaker == Speaker.DRIVER
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.CenterVertically) {
+        if (!mine) {
+            Image(painterResource(R.drawable.design_headset), contentDescription = null, modifier = Modifier.size(36.dp).background(Panel, RoundedCornerShape(10.dp)).padding(6.dp))
+            Spacer(Modifier.width(12.dp))
         }
-        is PreDriveState.AwaitingDestination, is PreDriveState.Ready -> Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            Title("목적지까지 얼마나 걸리나요?")
-            Text("10분 미만이면 핵심 장면 하나로 압축하고, 10분 이상이면 풀 에피소드로 들려드려요.", fontSize = 22.sp, color = Muted)
+        Text(
+            e.text,
+            fontSize = 22.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.background(if (mine) Accent else Panel, RoundedCornerShape(22.dp)).padding(horizontal = 20.dp, vertical = 10.dp),
+        )
+    }
+}
+
+@Composable
+private fun ConfirmDialog(question: String, onYes: () -> Unit, onNo: () -> Unit) {
+    Box(Modifier.fillMaxSize().background(Color(0xB3000000)), contentAlignment = Alignment.Center) {
+        Column(
+            Modifier.padding(24.dp).widthIn(max = 900.dp).fillMaxWidth().background(Surface0, RoundedCornerShape(36.dp)).padding(36.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(question, fontSize = 40.sp, fontWeight = FontWeight.Bold)
+            Text("터치하거나 음성으로 답변하세요", fontSize = 22.sp, color = Muted)
+            Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                ui.naviEtaMinutes?.let { eta -> BigButton("내비 경로 ${ceil(eta).toInt()}분") { vm.setDestination(eta) } }
-                listOf(8.0, 15.0, 32.0).forEach { m -> BigButton("${m.toInt()}분", Panel) { vm.setDestination(m) } }
-            }
-            if (p is PreDriveState.Ready) {
-                Text(
-                    "${p.etaMinutes.toInt()}분 · ${if (p.plan.mode == PacingMode.SHORT) "핵심 장면 압축" else "풀 에피소드"} · 장면 ${p.plan.beats.size}개",
-                    fontSize = 24.sp,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                    BigButton("주행 시작") { vm.startDriving() }
-                    if (hasLog) BigButton("이전 대화 기록", Panel, onClick = openLog)
-                    Text("시연 모드", fontSize = 20.sp)
-                    Switch(checked = ui.demoMode, onCheckedChange = vm::setDemoMode)
-                }
+                BigButton("예", modifier = Modifier.weight(1f), onClick = onYes)
+                BigButton("아니요", Panel, Modifier.weight(1f), onClick = onNo)
             }
         }
     }
 }
 
 @Composable
-private fun MapStandIn(modifier: Modifier) {
-    Canvas(modifier.background(MapBase)) {
-        val step = 140.dp.toPx()
-        var x = 0f
-        while (x < size.width) {
-            drawLine(MapRoad, Offset(x, 0f), Offset(x + size.height * 0.3f, size.height), strokeWidth = 18f)
-            x += step
+private fun StoryDetail(vm: DramaViewModel, ui: UiState, scenario: Scenario, save: SaveData?, openLog: () -> Unit) {
+    val cursor = save?.cursor ?: Cursor.START
+    val chapter = scenario.chapters.getOrNull(cursor.chapter) ?: scenario.chapters.first()
+    val next = if (save != null) chapter.recap else chapter.opening
+    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+        Column(Modifier.weight(0.26f).fillMaxHeight().background(Surface0, RoundedCornerShape(20.dp)).border(1.dp, Line, RoundedCornerShape(20.dp)).padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Chip(genreOf(scenario), Panel)
+            Text(scenario.title, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+            Text(scenario.premise, fontSize = 20.sp, color = Muted, maxLines = 4, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(8.dp))
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Pictogram(scenario, 300) }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
+            Text("${scenario.persona.name} · ${scenario.persona.tone}", fontSize = 20.sp, color = Muted)
         }
-        var y = step / 2
-        while (y < size.height) {
-            drawLine(MapRoad, Offset(0f, y), Offset(size.width, y - 40f), strokeWidth = 12f)
-            y += step
+        Column(Modifier.weight(0.74f).background(Brush.horizontalGradient(listOf(Color(0xFF222730), Bg)), RoundedCornerShape(20.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+            Title(scenario.title)
+            Text("${chapter.title} · 진행률 ${scenario.progressPercent(cursor)}%", fontSize = 26.sp, color = Muted)
+            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(Modifier.weight(1.6f).fillMaxHeight().background(Bg.copy(alpha = 0.7f), RoundedCornerShape(12.dp)).border(1.dp, Line, RoundedCornerShape(12.dp)).padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    Text("이전 대화 기록", fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                    val recent = ui.session.log.takeLast(4)
+                    if (recent.isEmpty()) Text("아직 기록이 없습니다. 첫 주행을 시작해 보세요.", fontSize = 22.sp, color = Muted)
+                    recent.forEach { Bubble(it) }
+                }
+                Column(Modifier.weight(1f).fillMaxHeight().background(Bg.copy(alpha = 0.7f), RoundedCornerShape(12.dp)).border(1.dp, Line, RoundedCornerShape(12.dp)).padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    Text("다음 이야기", fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                    Text(scenario.persona.name, fontSize = 20.sp, color = Muted)
+                    Text(next, fontSize = 28.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.height(28.dp))
+                    Waveform(Muted, Modifier.align(Alignment.CenterHorizontally), bars = 15)
+                    Text("터치하거나 음성으로 답변하세요", fontSize = 18.sp, color = Muted, modifier = Modifier.align(Alignment.CenterHorizontally))
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                BigButton("뒤로", Panel) { vm.back() }
+                if (ui.session.log.isNotEmpty()) BigButton("이전 대화 기록", Panel, onClick = openLog)
+                BigButton("스토리 재생", modifier = Modifier.weight(1f)) { if (save == null) vm.startNew() }
+            }
         }
-        drawLine(Accent, Offset(size.width * 0.15f, size.height), Offset(size.width * 0.55f, size.height * 0.25f), strokeWidth = 22f)
     }
+}
+
+@Composable
+private fun LengthCard(label: String, minutes: Double, detail: String, goal: String, selected: Boolean, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) Accent else Line),
+        colors = ButtonDefaults.buttonColors(containerColor = if (selected) Color(0xFF242B36) else Surface0, contentColor = Color.White),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(label, fontSize = 22.sp, color = Accent, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("예상 주행", fontSize = 20.sp, color = Muted)
+                Text("${ceil(minutes).toInt()}분", fontSize = 36.sp, fontWeight = FontWeight.Bold)
+                Text(detail, fontSize = 20.sp, color = Muted)
+            }
+            Text(goal, fontSize = 18.sp, color = Muted)
+        }
+    }
+}
+
+@Composable
+private fun DestinationScreen(vm: DramaViewModel, ui: UiState, scenario: Scenario, save: SaveData, resumed: Boolean, chosen: Double?, openLog: () -> Unit) {
+    val options = listOfNotNull(ui.naviEtaMinutes) + listOf(8.0, 15.0, 32.0)
+    Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        Title("목적지 설정")
+        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+            Box(Modifier.weight(1.6f).fillMaxHeight().clip(RoundedCornerShape(20.dp))) {
+                MapStandIn(Modifier.fillMaxSize())
+                Text("내비 목적지의 예상 이동 시간에 맞춰 이야기 분량이 정해집니다.", color = Color.White, fontSize = 20.sp, modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Color(0xE615181E)).padding(24.dp))
+            }
+            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(options) { minutes ->
+                    val plan = planDrive(scenario, save.cursor, minutes, resumed)
+                    val short = plan?.mode == PacingMode.SHORT
+                    val chapter = scenario.chapters.getOrNull(save.cursor.chapter)
+                    LengthCard(
+                        label = (if (minutes == ui.naviEtaMinutes) "내비 경로 · " else "") + if (short) "단거리 스토리" else "장거리 스토리",
+                        minutes = minutes,
+                        detail = "· 장면 ${plan?.beats?.size ?: 0}개",
+                        goal = "완료 목표 · ${if (short) "핵심 사건 1개" else chapter?.reward.orEmpty()}",
+                        selected = chosen == minutes,
+                    ) { vm.setDestination(minutes) }
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            BigButton("뒤로", Panel) { vm.back() }
+            if (ui.session.log.isNotEmpty()) BigButton("이전 대화 기록", Panel, onClick = openLog)
+            Text("시연 모드", fontSize = 20.sp)
+            Switch(checked = ui.demoMode, onCheckedChange = vm::setDemoMode)
+            BigButton("이 목적지로 설정", modifier = Modifier.weight(1f), enabled = chosen != null) { vm.startDriving() }
+        }
+    }
+}
+
+@Composable
+private fun PreDriveScreen(vm: DramaViewModel, ui: UiState, openAuthoring: () -> Unit, openLog: () -> Unit, openAiSettings: () -> Unit) {
+    when (val p = ui.session.pre) {
+        PreDriveState.Selecting -> ThemeList(vm, ui, openAuthoring, openAiSettings)
+        is PreDriveState.OfferNew -> StoryDetail(vm, ui, p.scenario, null, openLog)
+        is PreDriveState.AskResume -> Box {
+            StoryDetail(vm, ui, p.scenario, p.save, openLog)
+            ConfirmDialog(Prompts.ASK_RESUME, onYes = { vm.answer(true) }, onNo = { vm.answer(false) })
+        }
+        is PreDriveState.AskRestart -> Box {
+            StoryDetail(vm, ui, p.scenario, p.save, openLog)
+            ConfirmDialog(Prompts.ASK_RESTART, onYes = { vm.answer(true) }, onNo = { vm.answer(false) })
+        }
+        is PreDriveState.AwaitingDestination -> DestinationScreen(vm, ui, p.scenario, p.save, p.resumed, null, openLog)
+        is PreDriveState.Ready -> DestinationScreen(vm, ui, p.scenario, p.save, p.resumed, p.etaMinutes, openLog)
+    }
+}
+
+@Composable
+private fun MapStandIn(modifier: Modifier) {
+    Image(
+        painterResource(R.drawable.design_map),
+        contentDescription = "시연용 정적 지도 이미지. 표시된 경로와 장소명은 실제 내비게이션 안내가 아닙니다.",
+        modifier = modifier,
+        contentScale = ContentScale.Crop,
+    )
 }
 
 @Composable
 private fun DriveScreen(vm: DramaViewModel, ui: UiState) {
     val s = ui.session
     val scenario = s.pre.scenarioOrNull()
-    Box(Modifier.fillMaxSize()) {
+    val save = (s.pre as? PreDriveState.Ready)?.save
+    Box(Modifier.fillMaxSize().background(Bg)) {
         MapStandIn(Modifier.fillMaxSize())
-        Text("내비게이션 영역", color = Muted, fontSize = 18.sp, modifier = Modifier.align(Alignment.BottomEnd).padding(24.dp))
-        Column(Modifier.fillMaxSize().padding(24.dp)) {
-            FloatingBar(ui, scenario)
+        Column(Modifier.fillMaxSize().padding(32.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.Top) {
+                Column(Modifier.background(Color(0xF015181E), RoundedCornerShape(16.dp)).padding(horizontal = 28.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("📍 ${scenario?.chapters?.getOrNull(save?.cursor?.chapter ?: 0)?.title.orEmpty()}", fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                    Text("도착까지 ${ceil(s.etaMinutes).toInt()}분", fontSize = 28.sp, color = Color(0xFFCBD3DF))
+                }
+                ui.harshToast?.let { HarshToast(it) }
+            }
             Spacer(Modifier.weight(1f))
-            s.choices?.let { ChoicePanel(it, ui.answerSecondsLeft) { hint -> vm.choose(hint) } }
-            if (ui.demoMode && s.sos == null) DemoPanel(vm, s.drive)
+            if (s.drive is DriveState.Arrived) ParkCard(Modifier.align(Alignment.CenterHorizontally))
+            Spacer(Modifier.height(16.dp))
+            val branch = s.choices
+            if (branch != null) ChoiceBar(ui, branch) { hint -> vm.choose(hint) } else SubtitleBar(ui, scenario)
+            if (ui.demoMode && s.sos == null) DemoPanel(vm, s.drive, ui.aiEnabled)
         }
     }
 }
 
 @Composable
-private fun FloatingBar(ui: UiState, scenario: Scenario?) {
-    val s = ui.session
-    val line = ui.speaking ?: s.subtitle?.takeIf { it.speaker != Speaker.DRIVER }?.text ?: ""
+private fun HarshToast(kind: HarshKind) {
+    val label = when (kind) {
+        HarshKind.ACCEL -> "급가속 감지"
+        HarshKind.BRAKE -> "급제동 감지"
+        HarshKind.TURN -> "거친 조향 감지"
+    }
     Row(
-        Modifier.fillMaxWidth().background(Color(0xE60B1120), RoundedCornerShape(28.dp)).padding(horizontal = 20.dp, vertical = 14.dp),
+        Modifier.background(Color(0xF21E222A), RoundedCornerShape(18.dp)).border(BorderStroke(1.dp, Line), RoundedCornerShape(18.dp)).padding(horizontal = 24.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        Pictogram(scenario, 64)
-        Column(Modifier.weight(1f)) {
-            Text(scenario?.persona?.name.orEmpty(), color = Muted, fontSize = 18.sp)
-            Text(line, fontSize = 30.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("⚠", fontSize = 40.sp, color = Danger)
+        Column {
+            Text(label, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            Text("전방을 주시해 주세요.", fontSize = 20.sp, color = Color(0xFFCBD3DF))
         }
-        when (s.drive) {
-            is DriveState.Arrived -> Chip("P단 체결 시 리포트", Accent)
-            else -> Chip("도착까지 ${ceil(s.etaMinutes).toInt()}분", Panel)
-        }
-    }
-}
-
-@Composable
-private fun ChoicePanel(branch: Branch, secondsLeft: Int?, choose: (RouteHint) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
-            "\"${branch.detour.keyword}\" 또는 \"${branch.keep.keyword}\"라고 말하세요" + (secondsLeft?.let { " · ${it}초 후 기존 경로 유지" } ?: ""),
-            fontSize = 20.sp,
-            color = Color.White,
-            modifier = Modifier.background(Color(0xCC0B1120), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 6.dp),
-        )
-        Row(Modifier.fillMaxWidth().height(260.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            ChoiceButton("A · 우회", branch.detour.label, Color(0xFF2F6FE0), Modifier.weight(1f)) { choose(RouteHint.DETOUR) }
-            ChoiceButton("B · 기본값", branch.keep.label, Color(0xFF3A4558), Modifier.weight(1f)) { choose(RouteHint.KEEP) }
+        Column(horizontalAlignment = Alignment.End) {
+            Text("안전 점수", fontSize = 18.sp, color = Muted)
+            Text("-${HARSH_PENALTY}점", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Danger)
         }
     }
 }
 
 @Composable
-private fun ChoiceButton(tag: String, label: String, color: Color, modifier: Modifier, onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        modifier = modifier.fillMaxHeight(),
-        shape = RoundedCornerShape(28.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = color, contentColor = Color.White),
+private fun ParkCard(modifier: Modifier) {
+    Column(
+        modifier.background(Color(0xF207090D), RoundedCornerShape(20.dp)).padding(horizontal = 80.dp, vertical = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(tag, fontSize = 22.sp, color = Color(0xFFD0DAEA))
-            Text(label, fontSize = 40.sp, fontWeight = FontWeight.Bold)
-        }
+        Text("🔒", fontSize = 40.sp)
+        Text("주차 후 확인해 주세요", fontSize = 30.sp, fontWeight = FontWeight.Bold)
+        Text("P단으로 전환하면 주행 결과를 확인할 수 있어요.", fontSize = 20.sp, color = Color(0xFFCBD3DF))
+        Text("진행 기록 저장 완료", fontSize = 16.sp, color = Muted)
     }
 }
 
 @Composable
-private fun DemoPanel(vm: DramaViewModel, drive: DriveState?) {
-    val driving = drive is DriveState.Driving
-    Spacer(Modifier.height(16.dp))
+private fun SubtitleBar(ui: UiState, scenario: Scenario?) {
+    val line = ui.speaking ?: ui.session.subtitle?.takeIf { it.speaker != Speaker.DRIVER }?.text ?: ""
     Row(
-        Modifier.fillMaxWidth().background(Color(0xE6172033), RoundedCornerShape(16.dp)).padding(12.dp),
+        Modifier.fillMaxWidth().background(Brush.horizontalGradient(SubtitleBar), RoundedCornerShape(20.dp)).padding(horizontal = 32.dp, vertical = 22.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(24.dp),
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(scenario?.persona?.name.orEmpty(), fontSize = 22.sp, color = Color(0xFFD5E8EA))
+            Text(line, fontSize = 30.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        when {
+            ui.talkOpen -> {
+                Text("🎙", fontSize = 34.sp)
+                Text("지금 말을 걸어 보세요", fontSize = 24.sp)
+            }
+            ui.speaking != null -> {
+                Waveform(Color(0xFF4DA3FF), bars = 13)
+                Text("재생 중", fontSize = 24.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChoiceBar(ui: UiState, branch: Branch, choose: (RouteHint) -> Unit) {
+    val question = ui.speaking ?: ui.session.subtitle?.text.orEmpty()
+    Column(
+        Modifier.fillMaxWidth().background(Color(0xF50B0E11), RoundedCornerShape(20.dp)).padding(horizontal = 28.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            Waveform(Accent, bars = 7)
+            Text(question, fontSize = 32.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Text("🎙", fontSize = 34.sp)
+        }
+        Text(
+            "\"${branch.detour.keyword}\" 또는 \"${branch.keep.keyword}\"라고 말하세요" + (ui.answerSecondsLeft?.let { " · ${it}초 후 기존 경로 유지" } ?: ""),
+            fontSize = 20.sp,
+            color = Muted,
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            BigButton(branch.keep.label, Panel, Modifier.weight(1f).heightIn(min = 96.dp)) { choose(RouteHint.KEEP) }
+            BigButton(branch.detour.label, Accent, Modifier.weight(1f).heightIn(min = 96.dp)) { choose(RouteHint.DETOUR) }
+        }
+    }
+}
+
+@Composable
+private fun DemoPanel(vm: DramaViewModel, drive: DriveState?, aiEnabled: Boolean) {
+    val driving = drive is DriveState.Driving
+    Spacer(Modifier.height(12.dp))
+    Row(
+        Modifier.fillMaxWidth().background(Color(0xEB15181E), RoundedCornerShape(16.dp)).horizontalScroll(rememberScrollState()).padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("차량 신호", color = Muted, fontSize = 18.sp)
-        @Composable fun sig(label: String, enabled: Boolean = driving, color: Color = Color(0xFF2B3A55), onClick: () -> Unit) =
+        @Composable fun sig(label: String, enabled: Boolean = driving, color: Color = Color(0xFF2B3340), onClick: () -> Unit) =
             Button(onClick = onClick, enabled = enabled, colors = ButtonDefaults.buttonColors(containerColor = color, contentColor = Color.White)) { Text(label, fontSize = 18.sp) }
         sig("급가속") { vm.harsh(HarshKind.ACCEL) }
         sig("급제동") { vm.harsh(HarshKind.BRAKE) }
         sig("거친 조향") { vm.harsh(HarshKind.TURN) }
         sig("정체 발생") { vm.congestion() }
         sig("경로 안내") { vm.guidance("300미터 앞에서 오른쪽으로 가세요.") }
+        if (aiEnabled) sig("말 걸기", color = Good) { vm.say("우리 지금 어디로 가는 거야?") }
         sig("기어 P", enabled = true) { vm.gear(Gear.P) }
         sig("에어백 전개", enabled = true, color = Danger) { vm.emergency(EmergencyCause.AIRBAG) }
     }
 }
 
 @Composable
-private fun LockedScreen() {
+private fun EmergencyScreen() {
     Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("긴급 상황이 감지되어 이야기를 종료했습니다", fontSize = 32.sp, fontWeight = FontWeight.Bold)
-            Text("진행 기록은 저장되었습니다. 차량 SOS 안내를 따라 주세요.", fontSize = 24.sp, color = Muted)
+        Column(
+            Modifier.padding(32.dp).widthIn(max = 1000.dp).fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xFF181011), Color(0xFF0B0B0C))), RoundedCornerShape(48.dp)).padding(horizontal = 48.dp, vertical = 56.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text("⚠", fontSize = 100.sp, color = Danger)
+            Text("긴급 상황 감지", fontSize = 64.sp, fontWeight = FontWeight.Bold, color = Danger)
+            Text("스토리가 종료되었습니다.", fontSize = 38.sp)
+            Text("전방을 확인하고 안전 운전에 집중해 주세요.", fontSize = 26.sp, color = Color(0xFFCBD3DF))
         }
     }
 }
@@ -394,8 +623,8 @@ private fun ReportScreen(vm: DramaViewModel, ui: UiState, openLog: () -> Unit) {
     val r = ui.session.report ?: return
     val brakes = r.harsh[HarshKind.BRAKE] ?: 0
     val turns = r.harsh[HarshKind.TURN] ?: 0
-    Row(horizontalArrangement = Arrangement.spacedBy(40.dp)) {
-        Column(Modifier.weight(1.4f), verticalArrangement = Arrangement.spacedBy(22.dp)) {
+    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+        Column(Modifier.weight(1.4f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(22.dp)) {
             Title("오늘의 주행 결과")
             Text(r.chapterTitle, color = Muted, fontSize = 22.sp)
             Text("스토리 진행률  ${r.progressBefore}% → ${r.progressAfter}%  (+${r.progressAfter - r.progressBefore}%)", fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
@@ -411,12 +640,12 @@ private fun ReportScreen(vm: DramaViewModel, ui: UiState, openLog: () -> Unit) {
         }
         val colors = tierColors(r.reward.tier)
         Box(
-            Modifier.weight(1f).heightIn(min = 420.dp)
+            Modifier.weight(1f).fillMaxHeight()
                 .border(BorderStroke(10.dp, Brush.linearGradient(colors)), RoundedCornerShape(24.dp))
                 .background(Brush.verticalGradient(listOf(Color(0xFF2A2350), Color(0xFF0B1120))), RoundedCornerShape(24.dp))
                 .padding(28.dp),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("보상 카드 · ${r.reward.tier.label}", color = colors.first(), fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(40.dp))
                 Pictogram(ui.session.pre.scenarioOrNull(), 140)
@@ -432,7 +661,7 @@ private fun ReportScreen(vm: DramaViewModel, ui: UiState, openLog: () -> Unit) {
 private fun LogScreen(ui: UiState, close: () -> Unit) {
     val scenario = ui.session.pre.scenarioOrNull()
     val save = (ui.session.pre as? PreDriveState.AskResume)?.save
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Title("이전 대화 기록")
             Spacer(Modifier.weight(1f))
@@ -441,7 +670,7 @@ private fun LogScreen(ui: UiState, close: () -> Unit) {
         if (scenario != null && save != null) {
             Text("진행 중인 챕터: ${scenario.chapters.getOrNull(save.cursor.chapter)?.title.orEmpty()} (진행률 ${scenario.progressPercent(save.cursor)}%)", fontSize = 22.sp, color = Muted)
         }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items(ui.session.log) { e -> LogRow(e, scenario?.persona?.name ?: "캐릭터") }
         }
     }
@@ -465,7 +694,32 @@ private fun LogRow(e: LogEntry, name: String) {
 }
 
 @Composable
-private fun AuthoringScreen(vm: DramaViewModel, ui: UiState, close: () -> Unit) {
+private fun AiSettingsScreen(vm: DramaViewModel, ui: UiState, close: () -> Unit) {
+    var key by remember { mutableStateOf("") }
+    var baseUrl by remember { mutableStateOf(ui.aiBaseUrl) }
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Title("AI 설정")
+        Text(
+            "Claude API 키를 넣으면 AI가 시나리오를 만들고, 주행 상황에 맞춰 대사를 쓰고, 말을 걸면 대답합니다. " +
+                "키는 이 기기에만 저장됩니다. 키가 없으면 미리 쓴 장면으로 진행합니다.",
+            color = Muted, fontSize = 20.sp,
+        )
+        Text(if (ui.aiEnabled) "현재 상태: 켜짐 (저장된 키 사용 중. 키 칸을 비워 두고 저장하면 그대로 유지됩니다)" else "현재 상태: 꺼짐", fontSize = 22.sp)
+        OutlinedTextField(key, { key = it }, label = { Text("API 키") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(baseUrl, { baseUrl = it }, label = { Text("서버 주소 (비워 두면 기본값)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        ui.aiMessage?.let { Text(it, color = Accent, fontSize = 20.sp) }
+        Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            BigButton("저장") { vm.saveAiSettings(key, baseUrl) }
+            BigButton("AI 끄기", Panel) { vm.configureAi("", baseUrl) }
+            BigButton("닫기", Panel, onClick = close)
+        }
+    }
+}
+
+@Composable
+private fun AuthoringScreen(vm: DramaViewModel, ui: UiState, openAiSettings: () -> Unit, close: () -> Unit) {
+    var idea by remember { mutableStateOf("") }
+    var manual by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf("") }
     var premise by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
@@ -475,7 +729,25 @@ private fun AuthoringScreen(vm: DramaViewModel, ui: UiState, close: () -> Unit) 
     var beats by remember { mutableStateOf("") }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Title("내 시나리오 만들기") }
-        item { Text("정차 중에만 열립니다. 대사는 한 줄에 80자 이하로 써 주세요. 첫 장면이 핵심 장면이 됩니다.", color = Muted, fontSize = 20.sp) }
+        if (!manual) item {
+            Column(
+                Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(20.dp)).padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("AI로 만들기", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                Text("한 줄 아이디어만 쓰면 AI가 캐릭터, 챕터, 선택지, 반응 대사까지 씁니다. 예: 좀비 사태 속 구급차 기사", color = Muted, fontSize = 18.sp)
+                OutlinedTextField(idea, { idea = it }, label = { Text("한 줄 아이디어") }, singleLine = true, enabled = !ui.aiBusy, modifier = Modifier.fillMaxWidth())
+                ui.aiMessage?.let { Text(it, color = Accent, fontSize = 18.sp) }
+                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    if (ui.aiEnabled) BigButton(if (ui.aiBusy) "생성 중…" else "AI로 생성") { vm.generateScenario(idea) }
+                    else BigButton("AI 설정 열기", onClick = openAiSettings)
+                    BigButton("직접 쓰기", Panel) { manual = true }
+                    BigButton("닫기", Panel, onClick = close)
+                }
+            }
+        }
+        if (manual) {
+        item { Text("대사는 한 줄에 80자 이하로 써 주세요. 첫 장면이 핵심 장면이 됩니다.", color = Muted, fontSize = 20.sp) }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(title, { title = it }, label = { Text("제목") }, modifier = Modifier.weight(1f))
@@ -500,5 +772,6 @@ private fun AuthoringScreen(vm: DramaViewModel, ui: UiState, close: () -> Unit) 
             }
         }
         items(ui.authoringIssues) { Text(it, color = Danger, fontSize = 18.sp) }
+        }
     }
 }

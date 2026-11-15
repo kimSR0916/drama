@@ -66,6 +66,11 @@ class DriveTest {
         assertTrue(effects.none { it is Effect.Save })
     }
 
+    @Test fun sosBeforeAnySceneLeavesNoResumePoint() {
+        val (_, effects) = feed(begin(30.0), DriveEvent.Emergency(EmergencyCause.AIRBAG, 1000))
+        assertEquals(listOf(Effect.StopAllAudio, Effect.Sos(EmergencyCause.AIRBAG)), effects.takeLast(2))
+    }
+
     @Test fun scenesStillPlayWhenTheLiveEtaIsLongerThanTheChosenOne() {
         val ticks = (0..20).map { m -> DriveEvent.Tick(m * 60_000L, 40.0 - m) }
         val (_, effects) = feed(begin(15.0), *ticks.toTypedArray())
@@ -125,6 +130,16 @@ class DriveTest {
         listOf("잘 모는군.", question, "친서를 지켜야 한다.", "은신처가 보인다.").forEach { assertTrue(it, it in lines) }
         assertTrue(lines.indexOf("은신처가 보인다.") < lines.indexOf("1장 끝!"))
         assertTrue(state is DriveState.Arrived)
+    }
+
+    @Test fun onlySubScenesAndReactionsAreMarkedAsReplaceable() {
+        val ticks = (1..32).map { m -> DriveEvent.Tick(m * 60_000L, 32.0 - m) }
+        val (_, effects) = feed(begin(32.0), DriveEvent.HarshDriving(HarshKind.BRAKE, 1), *ticks.toTypedArray())
+        val slots = effects.filterIsInstance<Effect.Speak>().mapNotNull { e -> e.slot?.let { it to e.text } }
+        assertEquals(
+            listOf(Slot.Reaction(ReactionKind.BRAKE) to "앞을 잘 살피라고!", Slot.SubScene("s1") to "잘 모는군.", Slot.SubScene("s3") to "친서를 지켜야 한다."),
+            slots,
+        )
     }
 
     @Test fun tierFollowsSafetyScoreOnly() {

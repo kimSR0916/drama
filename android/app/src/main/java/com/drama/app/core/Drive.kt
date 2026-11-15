@@ -27,8 +27,16 @@ sealed interface DriveEvent {
     data class GearChanged(val gear: Gear, override val now: Long) : DriveEvent
 }
 
+enum class ReactionKind { ACCEL, BRAKE, TURN, CONGESTION }
+
+/** Marks a scripted line that may be swapped for a generated one without changing the story or the route. */
+sealed interface Slot {
+    data class SubScene(val beatId: String) : Slot
+    data class Reaction(val kind: ReactionKind) : Slot
+}
+
 sealed interface Effect {
-    data class Speak(val speaker: Speaker, val text: String) : Effect
+    data class Speak(val speaker: Speaker, val text: String, val slot: Slot? = null) : Effect
     data class Bgm(val on: Boolean) : Effect
     data object StopAllAudio : Effect
     data class Sos(val cause: EmergencyCause) : Effect
@@ -94,7 +102,8 @@ fun startDrive(ready: PreDriveState.Ready, now: Long): Step {
 private fun playNextBeat(trip: Trip, now: Long): Step {
     val planned = trip.plan.beats.getOrNull(trip.played) ?: return Step(DriveState.Driving(trip), emptyList())
     val beat = planned.beat
-    val effects = mutableListOf<Effect>(say(Speaker.CHARACTER, beat.line))
+    val slot = if (beat.kind == SceneKind.SUB && beat.branch == null) Slot.SubScene(beat.id) else null
+    val effects = mutableListOf<Effect>(Effect.Speak(Speaker.CHARACTER, beat.line, slot))
     val pending = beat.branch?.let {
         effects += Effect.ShowChoices(it)
         PendingChoice(beat.id, it, now + speechMs(beat.line) + QUESTION_SPEECH_CAP_MS)
@@ -180,16 +189,16 @@ private fun driving(trip: Trip, event: DriveEvent): Step {
                 stay(t)
             } else {
                 val r = trip.scenario.persona.reactions
-                val line = when (event.kind) {
-                    HarshKind.ACCEL -> r.harshAccel
-                    HarshKind.BRAKE -> r.harshBrake
-                    HarshKind.TURN -> r.harshTurn
+                val (line, kind) = when (event.kind) {
+                    HarshKind.ACCEL -> r.harshAccel to ReactionKind.ACCEL
+                    HarshKind.BRAKE -> r.harshBrake to ReactionKind.BRAKE
+                    HarshKind.TURN -> r.harshTurn to ReactionKind.TURN
                 }
-                stay(t.copy(lastReactionAt = event.now), listOf(say(Speaker.CHARACTER, line)))
+                stay(t.copy(lastReactionAt = event.now), listOf(Effect.Speak(Speaker.CHARACTER, line, Slot.Reaction(kind))))
             }
         }
         is DriveEvent.Congestion -> {
-            val reaction = say(Speaker.CHARACTER, trip.scenario.persona.reactions.congestion)
+            val reaction = Effect.Speak(Speaker.CHARACTER, trip.scenario.persona.reactions.congestion, Slot.Reaction(ReactionKind.CONGESTION))
             if (trip.pending != null) stay(trip, listOf(reaction))
             else playNextBeat(trip, event.now).let { Step(it.state, listOf(reaction) + it.effects) }
         }
@@ -210,7 +219,7 @@ private fun driving(trip: Trip, event: DriveEvent): Step {
                 Step(parked.state, arrived.effects + parked.effects)
             }
         }
-        is DriveEvent.Emergency -> emergency(event.cause, listOf(Effect.Save(progress(trip, event.now))))
+        is DriveEvent.Emergency -> emergency(event.cause, listOfNotNull(Effect.Save(progress(trip, event.now)).takeIf { trip.played > 0 }))
     }
 }
 
