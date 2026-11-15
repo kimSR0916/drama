@@ -85,7 +85,7 @@ cd android
 
 ## 검증
 
-- 단위 테스트는 28개입니다. `scenarios.json` 전체가 기획 규칙을 지키는지도 검사합니다. 엔진, 작성, 저장소, 음성 매칭, 급가감속 판정을 다룹니다. 실행 명령은 `./gradlew :app:testReleaseUnitTest`입니다.
+- 단위 테스트는 29개입니다. `scenarios.json` 전체가 기획 규칙을 지키는지도 검사합니다. 엔진, 작성, 저장소, 음성 매칭, 급가감속 판정을 다룹니다. 실행 명령은 `./gradlew :app:testReleaseUnitTest`입니다.
 - 경로 테스트는 `android/scripts/e2e-paths.sh`입니다. 5개 스토리의 단거리 주행(버튼 선택, 무응답), 재시작, 완결 후 재선택, 주행 중 재실행, 직접 만든 시나리오, 권한 없이 설치한 경우를 다룹니다.
 - 에뮬레이터 E2E는 `android/scripts/e2e.sh`입니다. Pleos Connect v2.1.0 에뮬레이터에서 아래 흐름을 실제로 탭하며 검증합니다.
   1. "사라진 연구원" 선택, 시작하기, 15분 주행

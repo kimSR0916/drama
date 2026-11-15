@@ -41,7 +41,7 @@ short_trip "이세계 트럭 기사" "숲길로 우회" timeout "안전한 왕�
 short_trip "심야 택시: 수상한 손님" "시계탑으로 우회" keep "가던 길이 제일 안전하죠" "오늘은 여기까지 하죠"
 crashed
 
-echo "== restart clears progress, declining both returns to select"
+echo "== declining both returns to select, restart opens from the beginning"
 tap "사라진 연구원"
 expect "이어서 하시겠습니까?"
 tap "아니오"
@@ -125,7 +125,7 @@ if [ -n "$APK" ]; then
   launch
   sleep 3
   for _ in 1 2 3 4; do
-    ui | grep -q 'text="허용 안함"' || break
+    grep -q 'text="허용 안함"' <<<"$(ui)" || break
     tap "허용 안함"
   done
   expect "오늘은 어떤 이야기를 달릴까요?"

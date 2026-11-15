@@ -210,7 +210,7 @@ private fun driving(trip: Trip, event: DriveEvent): Step {
                 Step(parked.state, arrived.effects + parked.effects)
             }
         }
-        is DriveEvent.Emergency -> emergency(event.cause, listOf(Effect.Save(progress(trip, event.now))))
+        is DriveEvent.Emergency -> emergency(event.cause, listOfNotNull(Effect.Save(progress(trip, event.now)).takeIf { trip.played > 0 }))
     }
 }
 

@@ -66,6 +66,11 @@ class DriveTest {
         assertTrue(effects.none { it is Effect.Save })
     }
 
+    @Test fun sosBeforeAnySceneLeavesNoResumePoint() {
+        val (_, effects) = feed(begin(30.0), DriveEvent.Emergency(EmergencyCause.AIRBAG, 1000))
+        assertEquals(listOf(Effect.StopAllAudio, Effect.Sos(EmergencyCause.AIRBAG)), effects.takeLast(2))
+    }
+
     @Test fun scenesStillPlayWhenTheLiveEtaIsLongerThanTheChosenOne() {
         val ticks = (0..20).map { m -> DriveEvent.Tick(m * 60_000L, 40.0 - m) }
         val (_, effects) = feed(begin(15.0), *ticks.toTypedArray())

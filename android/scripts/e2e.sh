@@ -49,7 +49,7 @@ tap "주행 시작"
 expect "지난 이야기: 제1 접선지에서"
 tap "에어백 전개"
 expect "긴급 상황이 감지되어"
-ui | grep -q 'text="기어 P"' && { echo "FAIL: controls still reachable after SOS" >&2; exit 1; }
+grep -q 'text="기어 P"' <<<"$(ui)" && { echo "FAIL: controls still reachable after SOS" >&2; exit 1; }
 echo "ok: session locked with no controls"
 shot 8-sos-locked
 crashed
