@@ -11,6 +11,8 @@ import com.anthropic.models.beta.messages.BetaOutputConfig
 import com.anthropic.models.beta.messages.BetaStopReason
 import com.anthropic.models.beta.messages.MessageCreateParams
 import java.io.InterruptedIOException
+import java.net.ConnectException
+import java.net.UnknownHostException
 import java.time.Duration
 
 const val CLAUDE_MODEL = "claude-opus-5-5"
@@ -18,7 +20,7 @@ private const val FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 /**
  * The SDK never retries: resending after a timeout would bill a long generation twice.
- * A connection that failed before any response is retried once here, because nothing was generated.
+ * Only a connection that was never established is retried once here, because the server cannot have seen the request.
  */
 class ClaudeLlm(apiKey: String, baseUrl: String?, timeout: Duration) : Llm {
     private val client: AnthropicClient = AnthropicOkHttpClient.builder()
@@ -54,6 +56,9 @@ class ClaudeLlm(apiKey: String, baseUrl: String?, timeout: Duration) : Llm {
     private fun timedOut(e: Throwable): Boolean =
         generateSequence(e) { it.cause }.any { it is InterruptedIOException }
 
+    private fun neverConnected(e: Throwable): Boolean =
+        generateSequence(e) { it.cause }.any { it is ConnectException || it is UnknownHostException }
+
     private fun attempt(params: MessageCreateParams, retryConnection: Boolean): LlmResult {
         return try {
             val message = client.beta().messages().create(params)
@@ -74,7 +79,7 @@ class ClaudeLlm(apiKey: String, baseUrl: String?, timeout: Duration) : Llm {
         } catch (e: AnthropicIoException) {
             when {
                 timedOut(e) -> LlmResult.Failed("응답이 너무 오래 걸렸습니다.")
-                retryConnection -> attempt(params, retryConnection = false)
+                retryConnection && neverConnected(e) -> attempt(params, retryConnection = false)
                 else -> LlmResult.Failed("네트워크에 연결할 수 없습니다.")
             }
         } catch (e: AnthropicException) {

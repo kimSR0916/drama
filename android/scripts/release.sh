@@ -3,7 +3,7 @@
 # Usage: android/scripts/release.sh <team-name> [app-name]
 set -euo pipefail
 TEAM="${1:?team name required}"
-APP="${2:-드라이브스토리}"
+APP="${2:-오디오디세이}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT/android"
 ./gradlew :app:testReleaseUnitTest :app:assembleRelease -q --console=plain

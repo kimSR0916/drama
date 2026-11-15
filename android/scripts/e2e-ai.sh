@@ -8,8 +8,9 @@ PORT=8787
 
 python3 "$(dirname "$0")/fake-llm.py" "$PORT" > "$OUT/fake-llm.log" 2>&1 &
 SERVER=$!
-trap 'kill $SERVER 2>/dev/null' EXIT
-sleep 1
+trap 'kill $SERVER 2>/dev/null; "$ADB" reverse --remove tcp:$PORT 2>/dev/null' EXIT
+sleep 2
+"$ADB" reverse tcp:$PORT tcp:$PORT >/dev/null
 
 type_into() { tap "$1"; "$ADB" shell input text "$2"; sleep 1; }
 
@@ -25,7 +26,7 @@ expect "현재 상태: 꺼짐"
 
 echo "== a rejected key is reported when generating"
 type_into "API 키" "bad-key"
-type_into "서버 주소 (비워 두면 기본값)" "http://10.0.2.2:$PORT"
+type_into "서버 주소 (비워 두면 기본값)" "http://localhost:$PORT"
 tap "저장"
 expect "AI 켜짐"
 tap "닫기"
@@ -67,8 +68,8 @@ tap "말 걸기"
 expect "(AI) 안전한 곳으로 가는 중이에요" 20
 expect "주차 후 확인해 주세요" 120
 tap "기어 P"
-expect "오늘의 주행 결과"
-tap "이전 대화 기록"
+expect "주행 결과"
+tap "기록 보기"
 expect "우리 지금 어디로 가는 거야?"
 expect "(AI) 지금까지 정말 잘 오고 있어요"
 shot 3-log

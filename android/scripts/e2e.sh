@@ -33,14 +33,14 @@ expect "주차 후 확인해 주세요" 120
 shot 5-arrived
 tap "기어 P"
 regulation off
-expect "오늘의 주행 결과"
-expect "보상 카드"
+expect "주행 결과"
+expect "획득 보상"
 shot 6-report
-tap "이전 대화 기록"
+tap "기록 보기"
 expect "나(운전자)"
 shot 7-log
 tap "닫기"
-tap "처음으로"
+tap "완료"
 pick "사라진 연구원"
 expect "이어서 하시겠습니까?"
 tap "예"
