@@ -58,6 +58,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -76,6 +77,7 @@ import com.drama.app.core.EmergencyCause
 import com.drama.app.core.Gear
 import com.drama.app.core.HARSH_PENALTY
 import com.drama.app.core.HarshKind
+import com.drama.app.core.SAFE_DRIVER_SCORE
 import com.drama.app.core.PacingMode
 import com.drama.app.core.PreDriveState
 import com.drama.app.core.Prompts
@@ -468,23 +470,93 @@ private fun DriveScreen(vm: DramaViewModel, ui: UiState) {
     val s = ui.session
     val scenario = s.pre.scenarioOrNull()
     val save = (s.pre as? PreDriveState.Ready)?.save
+    val arrived = s.drive is DriveState.Arrived
     Box(Modifier.fillMaxSize().background(Bg)) {
         MapStandIn(Modifier.fillMaxSize())
         Column(Modifier.fillMaxSize().padding(32.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.Top) {
+            Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.background(Color(0xF015181E), RoundedCornerShape(16.dp)).padding(horizontal = 28.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("📍 ${scenario?.chapters?.getOrNull(save?.cursor?.chapter ?: 0)?.title.orEmpty()}", fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                    Text("도착까지 ${ceil(s.etaMinutes).toInt()}분", fontSize = 28.sp, color = Color(0xFFCBD3DF))
+                    Text(if (arrived) "도착까지 1분" else "도착까지 ${ceil(s.etaMinutes).toInt()}분", fontSize = 28.sp, color = Color(0xFFCBD3DF))
                 }
+                Spacer(Modifier.weight(1f))
                 ui.harshToast?.let { HarshToast(it) }
+                Spacer(Modifier.weight(1f))
+                ui.liveScore?.let { ScoreGauge(it) }
             }
-            Spacer(Modifier.weight(1f))
-            if (s.drive is DriveState.Arrived) ParkCard(Modifier.align(Alignment.CenterHorizontally))
+            Row(Modifier.weight(1f).fillMaxWidth()) {
+                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Bottom) {
+                    if (arrived) AutoSavedToast()
+                }
+                Box(Modifier.weight(1.4f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                    if (arrived) ParkCard(Modifier)
+                }
+                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.End) {
+                    StoryPlayingCard(ui)
+                }
+            }
             Spacer(Modifier.height(16.dp))
             val branch = s.choices
             if (branch != null) ChoiceBar(ui, branch) { hint -> vm.choose(hint) } else SubtitleBar(ui, scenario)
             if (ui.demoMode && s.sos == null) DemoPanel(vm, s.drive, ui.aiEnabled)
         }
+    }
+}
+
+@Composable
+private fun ScoreGauge(score: Int) {
+    val color = when {
+        score >= SAFE_DRIVER_SCORE -> Color(0xFF3DDC84)
+        score >= 80 -> Color(0xFFFFC145)
+        else -> Danger
+    }
+    Box(Modifier.size(170.dp, 120.dp).background(Color(0xD915181E), RoundedCornerShape(20.dp)), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.size(130.dp).padding(top = 18.dp)) {
+            val stroke = 12.dp.toPx()
+            drawArc(Line, startAngle = 180f, sweepAngle = 180f, useCenter = false, style = Stroke(stroke, cap = StrokeCap.Round))
+            drawArc(color, startAngle = 180f, sweepAngle = 180f * score / 100f, useCenter = false, style = Stroke(stroke, cap = StrokeCap.Round))
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 30.dp)) {
+            Text("${score}점", fontSize = 34.sp, fontWeight = FontWeight.Bold)
+            Text("안전 점수", fontSize = 16.sp, color = Muted)
+        }
+    }
+}
+
+@Composable
+private fun StoryPlayingCard(ui: UiState) {
+    val label = when {
+        ui.talkOpen -> "지금 말을 걸어 보세요"
+        ui.session.choices != null -> "답변을 기다리는 중"
+        else -> "스토리 재생 중"
+    }
+    Column(Modifier.width(360.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            Modifier.fillMaxWidth().background(Color(0xE615181E), RoundedCornerShape(18.dp)).padding(horizontal = 22.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text("📍", fontSize = 30.sp)
+            Column {
+                Text(ui.session.pre.scenarioOrNull()?.persona?.name.orEmpty(), fontSize = 18.sp, color = Muted)
+                Text(label, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        Box(Modifier.fillMaxWidth().background(Color(0xE615181E), RoundedCornerShape(18.dp)).padding(vertical = 18.dp), contentAlignment = Alignment.Center) {
+            Waveform(if (ui.speaking != null) Color(0xFF2ED3B7) else Line, bars = 15)
+        }
+    }
+}
+
+@Composable
+private fun AutoSavedToast() {
+    Row(
+        Modifier.background(Color(0xE615181E), RoundedCornerShape(16.dp)).border(BorderStroke(1.dp, Color(0xFF2E6FD8)), RoundedCornerShape(16.dp)).padding(horizontal = 22.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Text("💾", fontSize = 28.sp)
+        Text("스토리가 자동 저장되었습니다.", fontSize = 24.sp)
     }
 }
 
@@ -530,23 +602,14 @@ private fun ParkCard(modifier: Modifier) {
 private fun SubtitleBar(ui: UiState, scenario: Scenario?) {
     val line = ui.speaking ?: ui.session.subtitle?.takeIf { it.speaker != Speaker.DRIVER }?.text ?: ""
     Row(
-        Modifier.fillMaxWidth().background(Brush.horizontalGradient(SubtitleBar), RoundedCornerShape(20.dp)).padding(horizontal = 32.dp, vertical = 22.dp),
+        Modifier.fillMaxWidth(0.82f).background(Color(0xF00D1016), RoundedCornerShape(20.dp)).padding(horizontal = 32.dp, vertical = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(24.dp),
+        horizontalArrangement = Arrangement.spacedBy(22.dp),
     ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(scenario?.persona?.name.orEmpty(), fontSize = 22.sp, color = Color(0xFFD5E8EA))
+        Waveform(Accent, bars = 5)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (scenario != null) Text(scenario.persona.name, fontSize = 18.sp, color = Muted)
             Text(line, fontSize = 30.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
-        when {
-            ui.talkOpen -> {
-                Text("🎙", fontSize = 34.sp)
-                Text("지금 말을 걸어 보세요", fontSize = 24.sp)
-            }
-            ui.speaking != null -> {
-                Waveform(Color(0xFF4DA3FF), bars = 13)
-                Text("재생 중", fontSize = 24.sp)
-            }
         }
     }
 }
@@ -621,40 +684,73 @@ private fun tierColors(tier: CardTier): List<Color> = when (tier) {
 }
 
 @Composable
+private fun ResultCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Column(modifier.fillMaxWidth().background(Panel, RoundedCornerShape(20.dp)).padding(horizontal = 28.dp, vertical = 22.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { content() }
+}
+
+@Composable
 private fun ReportScreen(vm: DramaViewModel, ui: UiState, openLog: () -> Unit) {
     val r = ui.session.report ?: return
+    val scenario = ui.session.pre.scenarioOrNull()
     val brakes = r.harsh[HarshKind.BRAKE] ?: 0
     val turns = r.harsh[HarshKind.TURN] ?: 0
-    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
-        Column(Modifier.weight(1.4f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(22.dp)) {
-            Title("오늘의 주행 결과")
-            Text(r.chapterTitle, color = Muted, fontSize = 22.sp)
-            Text("스토리 진행률  ${r.progressBefore}% → ${r.progressAfter}%  (+${r.progressAfter - r.progressBefore}%)", fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
-            LinearProgressIndicator(progress = { r.progressAfter / 100f }, modifier = Modifier.fillMaxWidth().height(14.dp))
-            Text("안전 주행 점수  ${r.safetyScore}점 / 100점", fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
-            Text("급제동 ${brakes}회 · " + if (turns == 0) "부드러운 조향 달성" else "거친 조향 ${turns}회", fontSize = 22.sp, color = Muted)
-            val bond = r.bondAfter
-            Text("${ui.session.pre.scenarioOrNull()?.persona?.name.orEmpty()} 호감도  Lv.${bond.level} ${bond.title} (${bond.points} / ${bond.nextAt})", fontSize = 26.sp)
-            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                BigButton("이전 대화 기록", Panel, onClick = openLog)
-                BigButton("처음으로") { vm.home() }
-            }
+    val gained = r.progressAfter - r.progressBefore
+    val bond = r.bondAfter
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("주행 결과", fontSize = 48.sp, fontWeight = FontWeight.Bold)
+            Text(scenario?.title.orEmpty(), fontSize = 22.sp, color = Muted)
         }
-        val colors = tierColors(r.reward.tier)
-        Box(
-            Modifier.weight(1f).fillMaxHeight()
-                .border(BorderStroke(10.dp, Brush.linearGradient(colors)), RoundedCornerShape(24.dp))
-                .background(Brush.verticalGradient(listOf(Color(0xFF2A2350), Color(0xFF0B1120))), RoundedCornerShape(24.dp))
-                .padding(28.dp),
-        ) {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("보상 카드 · ${r.reward.tier.label}", color = colors.first(), fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(40.dp))
-                Pictogram(ui.session.pre.scenarioOrNull(), 140)
-                Spacer(Modifier.height(20.dp))
+        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+            Column(Modifier.weight(1.5f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                ResultCard {
+                    Text("안전 주행 점수", fontSize = 22.sp, color = Muted)
+                    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("${r.safetyScore}점", fontSize = 52.sp, fontWeight = FontWeight.Bold)
+                        Text("/ 100점", fontSize = 24.sp, color = Muted, modifier = Modifier.padding(bottom = 8.dp))
+                    }
+                    Text("급제동 ${brakes}회 · " + if (turns == 0) "부드러운 조향 달성" else "거친 조향 ${turns}회", fontSize = 22.sp, color = Muted)
+                }
+                ResultCard {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Text("스토리 진행률", fontSize = 22.sp, color = Muted)
+                        Chip("+${gained}%p", Accent)
+                    }
+                    Text("${r.progressBefore}% → ${r.progressAfter}%", fontSize = 40.sp, fontWeight = FontWeight.Bold)
+                    LinearProgressIndicator(progress = { r.progressAfter / 100f }, modifier = Modifier.fillMaxWidth().height(12.dp), color = Accent, trackColor = Line)
+                    Text(r.chapterTitle, fontSize = 18.sp, color = Muted)
+                }
+                ResultCard {
+                    Text("${scenario?.persona?.name.orEmpty()} 신뢰도", fontSize = 22.sp, color = Muted)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Lv.${bond.level} ${bond.title}", fontSize = 30.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text("${bond.points} / ${bond.nextAt}", fontSize = 24.sp, color = Muted)
+                    }
+                    LinearProgressIndicator(progress = { (bond.points.toFloat() / bond.nextAt).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().height(12.dp), color = Accent, trackColor = Line)
+                }
+            }
+            val colors = tierColors(r.reward.tier)
+            Column(
+                Modifier.weight(1f).fillMaxHeight()
+                    .border(BorderStroke(3.dp, Brush.linearGradient(colors)), RoundedCornerShape(24.dp))
+                    .background(Brush.verticalGradient(listOf(Color(0xFF15304A), Color(0xFF0D1520))), RoundedCornerShape(24.dp))
+                    .padding(28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Text("획득 보상", fontSize = 24.sp, color = Color(0xFFCBD3DF))
+                Spacer(Modifier.weight(1f))
+                Pictogram(scenario, 180)
                 Text(r.reward.title, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+                Chip(r.reward.tier.label, Color(0x33FFFFFF))
+                Spacer(Modifier.weight(1f))
                 Text("안전 운전 점수로만 등급이 정해집니다", color = Muted, fontSize = 18.sp)
             }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            Spacer(Modifier.weight(1f))
+            BigButton("기록 보기", Panel, Modifier.width(320.dp), onClick = openLog)
+            BigButton("완료", modifier = Modifier.width(320.dp)) { vm.home() }
         }
     }
 }

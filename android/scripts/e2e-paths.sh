@@ -23,12 +23,12 @@ short_trip() {
   esac
   expect "주차 후 확인해 주세요" 120
   tap "기어 P"
-  expect "오늘의 주행 결과"
-  tap "이전 대화 기록"
+  expect "주행 결과"
+  tap "기록 보기"
   expect "$reply"
   expect "$closing"
   tap "닫기"
-  tap "처음으로"
+  tap "완료"
   expect "내 테마"
 }
 
@@ -55,8 +55,8 @@ tap "8분"
 tap "이 목적지로 설정"
 expect "연구소 마지막 신호가 잡혔습니다"
 tap "기어 P"
-expect "오늘의 주행 결과"
-tap "처음으로"
+expect "주행 결과"
+tap "완료"
 
 echo "== finished single-chapter story offers a new start"
 pick "심야 택시: 수상한 손님"
@@ -70,7 +70,7 @@ tap "정체 발생"
 expect "주차 후 확인해 주세요" 240
 tap "기어 P"
 expect "100%"
-tap "처음으로"
+tap "완료"
 pick "심야 택시: 수상한 손님"
 expect "스토리 재생"
 absent "이어서 하시겠습니까?"
@@ -115,7 +115,7 @@ expect "First scene" 60
 expect "주차 후 확인해 주세요" 120
 tap "기어 P"
 expect "Ch1 기념 카드"
-tap "처음으로"
+tap "완료"
 crashed
 
 if [ -n "$APK" ]; then
@@ -139,7 +139,7 @@ if [ -n "$APK" ]; then
   tap "우회 도로로 빠진다"
   expect "주차 후 확인해 주세요" 120
   tap "기어 P"
-  expect "오늘의 주행 결과"
+  expect "주행 결과"
   crashed
   grant
 fi

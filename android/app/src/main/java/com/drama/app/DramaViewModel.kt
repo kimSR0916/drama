@@ -30,6 +30,7 @@ import com.drama.app.core.ReactionKind
 import com.drama.app.core.RouteHint
 import com.drama.app.core.SceneKind
 import com.drama.app.core.Slot
+import com.drama.app.core.safetyScore
 import com.drama.app.core.Scenario
 import com.drama.app.core.ScenarioSource
 import com.drama.app.platform.NaviSignals
@@ -84,6 +85,7 @@ data class UiState(
     val talkOpen: Boolean = false,
     val linked: Boolean = false,
     val harshToast: HarshKind? = null,
+    val liveScore: Int? = null,
 )
 
 class DramaViewModel(app: Application) : AndroidViewModel(app) {
@@ -164,6 +166,11 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
         post {
             it.copy(
                 talkOpen = talkOpen,
+                liveScore = when (val d = session.view.drive) {
+                    is DriveState.Driving -> safetyScore(d.trip.harsh)
+                    is DriveState.Arrived -> safetyScore(d.trip.harsh)
+                    else -> null
+                },
             session = session.view,
             stories = store.listScenarios().sortedBy { s -> if (s.source == ScenarioSource.CUSTOM) -1 else builtins.indexOfFirst { it.id == s.id } },
             naviEtaMinutes = naviFresh(),

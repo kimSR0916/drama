@@ -68,8 +68,8 @@ tap "말 걸기"
 expect "(AI) 안전한 곳으로 가는 중이에요" 20
 expect "주차 후 확인해 주세요" 120
 tap "기어 P"
-expect "오늘의 주행 결과"
-tap "이전 대화 기록"
+expect "주행 결과"
+tap "기록 보기"
 expect "우리 지금 어디로 가는 거야?"
 expect "(AI) 지금까지 정말 잘 오고 있어요"
 shot 3-log
