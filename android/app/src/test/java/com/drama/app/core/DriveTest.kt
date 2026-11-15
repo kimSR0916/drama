@@ -132,6 +132,16 @@ class DriveTest {
         assertTrue(state is DriveState.Arrived)
     }
 
+    @Test fun onlySubScenesAndReactionsAreMarkedAsReplaceable() {
+        val ticks = (1..32).map { m -> DriveEvent.Tick(m * 60_000L, 32.0 - m) }
+        val (_, effects) = feed(begin(32.0), DriveEvent.HarshDriving(HarshKind.BRAKE, 1), *ticks.toTypedArray())
+        val slots = effects.filterIsInstance<Effect.Speak>().mapNotNull { e -> e.slot?.let { it to e.text } }
+        assertEquals(
+            listOf(Slot.Reaction(ReactionKind.BRAKE) to "앞을 잘 살피라고!", Slot.SubScene("s1") to "잘 모는군.", Slot.SubScene("s3") to "친서를 지켜야 한다."),
+            slots,
+        )
+    }
+
     @Test fun tierFollowsSafetyScoreOnly() {
         assertEquals(CardTier.GOLD, cardTier(100))
         assertEquals(CardTier.SILVER, cardTier(92))

@@ -5,6 +5,13 @@ import android.content.Context
 import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.drama.app.ai.AiDirector
+import com.drama.app.ai.ClaudeLlm
+import com.drama.app.ai.DriveContext
+import com.drama.app.ai.LineWriter
+import com.drama.app.ai.Llm
+import com.drama.app.ai.ScenarioWriter
+import com.drama.app.ai.WriteResult
 import com.drama.app.authoring.AccountStore
 import com.drama.app.authoring.DraftResult
 import com.drama.app.authoring.KeyValue
@@ -19,7 +26,10 @@ import com.drama.app.core.Gear
 import com.drama.app.core.HarshKind
 import com.drama.app.core.InputVia
 import com.drama.app.core.PreDriveEvent
+import com.drama.app.core.ReactionKind
 import com.drama.app.core.RouteHint
+import com.drama.app.core.SceneKind
+import com.drama.app.core.Slot
 import com.drama.app.core.Scenario
 import com.drama.app.core.ScenarioSource
 import com.drama.app.platform.NaviSignals
@@ -29,13 +39,20 @@ import com.drama.app.platform.matchChoice
 import com.drama.app.session.Outputs
 import com.drama.app.session.Session
 import com.drama.app.session.SessionView
+import java.time.Duration
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 const val DEMO_SPEED = 10
+const val AI_TIMEOUT_SECONDS = 180L
+const val TALK_WINDOW_MS = 10_000L
+const val TALK_MAX_CHARS = 100
+const val TALK_FALLBACK = "지금은 대답하기 어렵네요. 조금 있다 다시 이야기해요."
 private const val TICK_MS = 1_000L
 private const val NAVI_FRESH_MS = 10_000L
 
@@ -57,6 +74,12 @@ data class UiState(
     val sosLocked: Boolean = false,
     val answerSecondsLeft: Int? = null,
     val speaking: String? = null,
+    val aiEnabled: Boolean = false,
+    val aiBusy: Boolean = false,
+    val aiMessage: String? = null,
+    val aiCreatedId: String? = null,
+    val aiBaseUrl: String = "",
+    val talkOpen: Boolean = false,
 )
 
 class DramaViewModel(app: Application) : AndroidViewModel(app) {
@@ -64,6 +87,14 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
     private val builtins = parseBuiltins(app.assets.open("scenarios.json").bufferedReader().use { it.readText() })
     private var naviEta: Pair<Long, Double>? = null
     private var etaMinutes = 0.0
+
+    private val aiPrefs = app.getSharedPreferences("drama-ai", Context.MODE_PRIVATE)
+    private var llm: Llm? = null
+    private val director = AiDirector(
+        background = { work -> viewModelScope.launch(Dispatchers.IO) { work() } },
+        deliver = { block -> viewModelScope.launch { block() } },
+    )
+    private var talkOpen = false
 
     private fun now() = SystemClock.elapsedRealtime()
 
@@ -96,12 +127,13 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
         override fun sos(cause: EmergencyCause) = post { it.copy(sosLocked = true) }
         override fun listenForChoice(branch: Branch) = voice.listen { onMain { session.send(DriveEvent.QuestionSpoken(now())); refresh() } }
         override fun stopListening() = voice.stopListening()
-    }, clock = ::now)
+    }, clock = ::now, generated = director::take)
 
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui.asStateFlow()
 
     init {
+        configureAi(aiPrefs.getString("key", "").orEmpty(), aiPrefs.getString("baseUrl", "").orEmpty(), announce = false)
         builtins.forEach(store::putScenario)
         vehicle.start()
         navi.start()
@@ -118,13 +150,112 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
         _ui.value = f(_ui.value)
     }
 
-    private fun refresh() = post {
-        it.copy(
+    private fun refresh() {
+        prepareLines()
+        post {
+            it.copy(
+                talkOpen = talkOpen,
             session = session.view,
             stories = store.listScenarios().sortedBy { s -> if (s.source == ScenarioSource.CUSTOM) -1 else builtins.indexOfFirst { it.id == s.id } },
             naviEtaMinutes = naviFresh(),
-            answerSecondsLeft = (session.view.drive as? DriveState.Driving)?.trip?.pending?.takeIf { it.spoken }?.let { p -> ((p.deadline - now() + 999) / 1000).toInt().coerceAtLeast(0) },
+                answerSecondsLeft = (session.view.drive as? DriveState.Driving)?.trip?.pending?.takeIf { it.spoken }?.let { p -> ((p.deadline - now() + 999) / 1000).toInt().coerceAtLeast(0) },
+            )
+        }
+    }
+
+    fun configureAi(key: String, baseUrl: String, announce: Boolean = true) {
+        val k = key.trim()
+        val url = baseUrl.trim()
+        aiPrefs.edit().putString("key", k).putString("baseUrl", url).apply()
+        llm = if (k.isEmpty()) null else ClaudeLlm(k, url.ifEmpty { null }, Duration.ofSeconds(AI_TIMEOUT_SECONDS))
+        director.writer = llm?.let(::LineWriter)
+        post {
+            it.copy(
+                aiEnabled = llm != null,
+                aiBaseUrl = url,
+                aiMessage = if (!announce) null else if (llm != null) "AI 기능을 켰습니다." else "AI 기능을 껐습니다. 미리 쓴 장면으로 진행합니다.",
+            )
+        }
+    }
+
+    private fun driveContext(): DriveContext? {
+        val trip = when (val d = session.view.drive) {
+            is DriveState.Driving -> d.trip
+            is DriveState.Arrived -> d.trip
+            else -> return null
+        }
+        return DriveContext(
+            scenario = trip.scenario,
+            chapterTitle = trip.scenario.chapters.getOrNull(trip.save.cursor.chapter)?.title.orEmpty(),
+            recent = session.view.log,
+            etaMinutes = session.view.etaMinutes.toInt(),
+            harshCount = trip.harsh.values.sum(),
         )
+    }
+
+    private fun prepareLines() {
+        val trip = (session.view.drive as? DriveState.Driving)?.trip ?: return
+        val context = driveContext() ?: return
+        val r = trip.scenario.persona.reactions
+        val wanted = linkedMapOf<Slot, String>(
+            Slot.Reaction(ReactionKind.BRAKE) to r.harshBrake,
+            Slot.Reaction(ReactionKind.CONGESTION) to r.congestion,
+            Slot.Reaction(ReactionKind.ACCEL) to r.harshAccel,
+            Slot.Reaction(ReactionKind.TURN) to r.harshTurn,
+        )
+        trip.plan.beats.drop(trip.played).firstOrNull { it.beat.kind == SceneKind.SUB && it.beat.branch == null }
+            ?.let { wanted[Slot.SubScene(it.beat.id)] = it.beat.line }
+        director.prepare(context, wanted)
+    }
+
+    fun generateScenario(idea: String) {
+        val model = llm
+        if (model == null) {
+            post { it.copy(aiMessage = "AI 설정에서 API 키를 먼저 입력해 주세요.") }
+            return
+        }
+        if (_ui.value.aiBusy) return
+        post { it.copy(aiBusy = true, aiMessage = "AI가 시나리오를 쓰는 중입니다. 1~2분 걸릴 수 있어요.") }
+        val id = "custom-${System.currentTimeMillis()}"
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { ScenarioWriter(model).write(idea, id) }.getOrElse { WriteResult.Failed("AI 호출에 실패했습니다.") } }
+            when (result) {
+                is WriteResult.Ok -> {
+                    store.putScenario(result.scenario)
+                    post { it.copy(aiBusy = false, aiCreatedId = id, aiMessage = "'${result.scenario.title}' 시나리오를 만들었습니다.") }
+                    refresh()
+                }
+                is WriteResult.Failed -> post { it.copy(aiBusy = false, aiMessage = result.message) }
+            }
+        }
+    }
+
+    fun say(utterance: String) {
+        val model = llm ?: return
+        val text = utterance.trim().take(TALK_MAX_CHARS)
+        if (text.isEmpty() || !session.driverSaid(text)) return
+        val context = driveContext()
+        refresh()
+        if (context == null) return
+        viewModelScope.launch {
+            val reply = withContext(Dispatchers.IO) { runCatching { LineWriter(model).reply(context.copy(recent = session.view.log), text) }.getOrNull() }
+            session.characterReplied(reply ?: TALK_FALLBACK)
+            refresh()
+        }
+    }
+
+    private fun openTalkWindow() {
+        if (llm == null || session.view.choices != null || session.view.drive !is DriveState.Driving) return
+        talkOpen = true
+        voice.listen { }
+        viewModelScope.launch {
+            delay(TALK_WINDOW_MS)
+            if (talkOpen) {
+                talkOpen = false
+                if (session.view.choices == null) voice.stopListening()
+                refresh()
+            }
+        }
     }
 
     private fun onNaviEta(minutes: Double) {
@@ -160,6 +291,7 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
     fun setDemoMode(on: Boolean) = post { it.copy(demoMode = on) }
 
     fun startDriving() {
+        director.reset()
         session.startDriving()
         etaMinutes = session.view.etaMinutes
         refresh()
@@ -175,16 +307,26 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
         if (session.view.drive !is DriveState.Driving) return
         etaMinutes += 3
         session.send(DriveEvent.Congestion(now()))
+        openTalkWindow()
         refresh()
     }
 
     private fun onHeard(text: String) {
-        val choices = session.view.choices ?: return
-        matchChoice(text, choices)?.let { choose(it, InputVia.VOICE) }
+        val choices = session.view.choices
+        when {
+            choices != null -> matchChoice(text, choices)?.let { choose(it, InputVia.VOICE) }
+            talkOpen -> {
+                talkOpen = false
+                voice.stopListening()
+                say(text)
+            }
+        }
     }
 
     fun home() {
         if (_ui.value.sosLocked) return
+        talkOpen = false
+        director.reset()
         session.reset()
         refresh()
     }

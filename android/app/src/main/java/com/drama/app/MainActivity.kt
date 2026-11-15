@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -110,7 +111,14 @@ private fun App(vm: DramaViewModel) {
     val s = ui.session
     var authoring by remember { mutableStateOf(false) }
     var showLog by remember { mutableStateOf(false) }
-    LaunchedEffect(ui.systemUxRestricted) { if (ui.systemUxRestricted) authoring = false }
+    var aiSettings by remember { mutableStateOf(false) }
+    LaunchedEffect(ui.systemUxRestricted) {
+        if (ui.systemUxRestricted) {
+            authoring = false
+            aiSettings = false
+        }
+    }
+    LaunchedEffect(ui.aiCreatedId) { if (ui.aiCreatedId != null) authoring = false }
     LaunchedEffect(s.drive) { if (s.drive != null && s.report == null) showLog = false }
 
     when {
@@ -123,8 +131,9 @@ private fun App(vm: DramaViewModel) {
                 when {
                     showLog -> LogScreen(ui) { showLog = false }
                     s.report != null -> ReportScreen(vm, ui) { showLog = true }
-                    authoring -> AuthoringScreen(vm, ui) { authoring = false }
-                    else -> PreDriveScreen(vm, ui, openAuthoring = { authoring = true }, openLog = { showLog = true })
+                    aiSettings -> AiSettingsScreen(vm, ui) { aiSettings = false }
+                    authoring -> AuthoringScreen(vm, ui, openAiSettings = { aiSettings = true }) { authoring = false }
+                    else -> PreDriveScreen(vm, ui, openAuthoring = { authoring = true }, openLog = { showLog = true }, openAiSettings = { aiSettings = true })
                 }
             }
         }
@@ -137,6 +146,7 @@ private fun StatusBar(ui: UiState) {
         Text("드라마", fontSize = 30.sp, fontWeight = FontWeight.Bold)
         Chip(if (ui.systemUxRestricted) "주행 제한 활성" else "정차 중 · P", Panel)
         if (ui.demoMode) Chip("시연 모드 ${DEMO_SPEED}배속", Color(0xFF5B3DB8))
+        Chip(if (ui.aiEnabled) "AI 켜짐" else "AI 꺼짐", if (ui.aiEnabled) Color(0xFF1F7A4D) else Panel)
     }
 }
 
@@ -178,7 +188,7 @@ private fun PreDriveState.scenarioOrNull(): Scenario? = when (this) {
 }
 
 @Composable
-private fun PreDriveScreen(vm: DramaViewModel, ui: UiState, openAuthoring: () -> Unit, openLog: () -> Unit) {
+private fun PreDriveScreen(vm: DramaViewModel, ui: UiState, openAuthoring: () -> Unit, openLog: () -> Unit, openAiSettings: () -> Unit) {
     val p = ui.session.pre
     val hasLog = ui.session.log.isNotEmpty()
     when (p) {
@@ -186,7 +196,11 @@ private fun PreDriveScreen(vm: DramaViewModel, ui: UiState, openAuthoring: () ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Title("오늘은 어떤 이야기를 달릴까요?")
                 Spacer(Modifier.weight(1f))
-                if (!ui.systemUxRestricted) BigButton("내 시나리오 만들기", Panel, onClick = openAuthoring)
+                if (!ui.systemUxRestricted) {
+                    BigButton("AI 설정", Panel, onClick = openAiSettings)
+                    Spacer(Modifier.width(16.dp))
+                    BigButton("내 시나리오 만들기", Panel, onClick = openAuthoring)
+                }
             }
             Spacer(Modifier.height(24.dp))
             LazyVerticalGrid(GridCells.Fixed(3), horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -294,7 +308,7 @@ private fun DriveScreen(vm: DramaViewModel, ui: UiState) {
             FloatingBar(ui, scenario)
             Spacer(Modifier.weight(1f))
             s.choices?.let { ChoicePanel(it, ui.answerSecondsLeft) { hint -> vm.choose(hint) } }
-            if (ui.demoMode && s.sos == null) DemoPanel(vm, s.drive)
+            if (ui.demoMode && s.sos == null) DemoPanel(vm, s.drive, ui.aiEnabled)
         }
     }
 }
@@ -313,6 +327,7 @@ private fun FloatingBar(ui: UiState, scenario: Scenario?) {
             Text(scenario?.persona?.name.orEmpty(), color = Muted, fontSize = 18.sp)
             Text(line, fontSize = 30.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+        if (ui.talkOpen) Chip("지금 말을 걸어 보세요", Color(0xFF1F7A4D))
         when (s.drive) {
             is DriveState.Arrived -> Chip("P단 체결 시 리포트", Accent)
             else -> Chip("도착까지 ${ceil(s.etaMinutes).toInt()}분", Panel)
@@ -352,7 +367,7 @@ private fun ChoiceButton(tag: String, label: String, color: Color, modifier: Mod
 }
 
 @Composable
-private fun DemoPanel(vm: DramaViewModel, drive: DriveState?) {
+private fun DemoPanel(vm: DramaViewModel, drive: DriveState?, aiEnabled: Boolean) {
     val driving = drive is DriveState.Driving
     Spacer(Modifier.height(16.dp))
     Row(
@@ -368,6 +383,7 @@ private fun DemoPanel(vm: DramaViewModel, drive: DriveState?) {
         sig("거친 조향") { vm.harsh(HarshKind.TURN) }
         sig("정체 발생") { vm.congestion() }
         sig("경로 안내") { vm.guidance("300미터 앞에서 오른쪽으로 가세요.") }
+        if (aiEnabled) sig("말 걸기", color = Color(0xFF1F7A4D)) { vm.say("우리 지금 어디로 가는 거야?") }
         sig("기어 P", enabled = true) { vm.gear(Gear.P) }
         sig("에어백 전개", enabled = true, color = Danger) { vm.emergency(EmergencyCause.AIRBAG) }
     }
@@ -465,7 +481,32 @@ private fun LogRow(e: LogEntry, name: String) {
 }
 
 @Composable
-private fun AuthoringScreen(vm: DramaViewModel, ui: UiState, close: () -> Unit) {
+private fun AiSettingsScreen(vm: DramaViewModel, ui: UiState, close: () -> Unit) {
+    var key by remember { mutableStateOf("") }
+    var baseUrl by remember { mutableStateOf(ui.aiBaseUrl) }
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Title("AI 설정")
+        Text(
+            "Claude API 키를 넣으면 AI가 시나리오를 만들고, 주행 상황에 맞춰 대사를 쓰고, 말을 걸면 대답합니다. " +
+                "키는 이 기기에만 저장됩니다. 키가 없으면 미리 쓴 장면으로 진행합니다.",
+            color = Muted, fontSize = 20.sp,
+        )
+        Text(if (ui.aiEnabled) "현재 상태: 켜짐 (저장된 키 사용 중)" else "현재 상태: 꺼짐", fontSize = 22.sp)
+        OutlinedTextField(key, { key = it }, label = { Text("API 키") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(baseUrl, { baseUrl = it }, label = { Text("서버 주소 (비워 두면 기본값)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        ui.aiMessage?.let { Text(it, color = Accent, fontSize = 20.sp) }
+        Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            BigButton("저장") { vm.configureAi(key, baseUrl) }
+            BigButton("AI 끄기", Panel) { vm.configureAi("", baseUrl) }
+            BigButton("닫기", Panel, onClick = close)
+        }
+    }
+}
+
+@Composable
+private fun AuthoringScreen(vm: DramaViewModel, ui: UiState, openAiSettings: () -> Unit, close: () -> Unit) {
+    var idea by remember { mutableStateOf("") }
+    var manual by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf("") }
     var premise by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
@@ -475,7 +516,25 @@ private fun AuthoringScreen(vm: DramaViewModel, ui: UiState, close: () -> Unit) 
     var beats by remember { mutableStateOf("") }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Title("내 시나리오 만들기") }
-        item { Text("정차 중에만 열립니다. 대사는 한 줄에 80자 이하로 써 주세요. 첫 장면이 핵심 장면이 됩니다.", color = Muted, fontSize = 20.sp) }
+        if (!manual) item {
+            Column(
+                Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(20.dp)).padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("AI로 만들기", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                Text("한 줄 아이디어만 쓰면 AI가 캐릭터, 챕터, 선택지, 반응 대사까지 씁니다. 예: 좀비 사태 속 구급차 기사", color = Muted, fontSize = 18.sp)
+                OutlinedTextField(idea, { idea = it }, label = { Text("한 줄 아이디어") }, singleLine = true, enabled = !ui.aiBusy, modifier = Modifier.fillMaxWidth())
+                ui.aiMessage?.let { Text(it, color = Accent, fontSize = 18.sp) }
+                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    if (ui.aiEnabled) BigButton(if (ui.aiBusy) "생성 중…" else "AI로 생성") { vm.generateScenario(idea) }
+                    else BigButton("AI 설정 열기", onClick = openAiSettings)
+                    BigButton("직접 쓰기", Panel) { manual = true }
+                    BigButton("닫기", Panel, onClick = close)
+                }
+            }
+        }
+        if (manual) {
+        item { Text("대사는 한 줄에 80자 이하로 써 주세요. 첫 장면이 핵심 장면이 됩니다.", color = Muted, fontSize = 20.sp) }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(title, { title = it }, label = { Text("제목") }, modifier = Modifier.weight(1f))
@@ -500,5 +559,6 @@ private fun AuthoringScreen(vm: DramaViewModel, ui: UiState, close: () -> Unit) 
             }
         }
         items(ui.authoringIssues) { Text(it, color = Danger, fontSize = 18.sp) }
+        }
     }
 }

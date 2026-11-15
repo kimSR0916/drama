@@ -93,6 +93,7 @@ tap "아니오"
 
 echo "== custom scenario from the authoring screen"
 tap "내 시나리오 만들기"
+tap "직접 쓰기"
 type_into() { tap "$1"; "$ADB" shell input text "$2"; sleep 1; }
 tap "저장"
 expect "제목을(를) 입력해 주세요."
