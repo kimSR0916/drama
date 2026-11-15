@@ -486,10 +486,10 @@ private fun DriveScreen(vm: DramaViewModel, ui: UiState) {
             }
             Row(Modifier.weight(1f).fillMaxWidth()) {
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Bottom) {
-                    if (arrived) AutoSavedToast()
+                    if (ui.autoSaved) AutoSavedToast()
                 }
                 Box(Modifier.weight(1.4f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                    if (arrived) ParkCard(Modifier)
+                    if (arrived) ParkCard(Modifier, ui.autoSaved)
                 }
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.End) {
                     StoryPlayingCard(ui)
@@ -585,7 +585,7 @@ private fun HarshToast(kind: HarshKind) {
 }
 
 @Composable
-private fun ParkCard(modifier: Modifier) {
+private fun ParkCard(modifier: Modifier, saved: Boolean) {
     Column(
         modifier.background(Color(0xF207090D), RoundedCornerShape(20.dp)).padding(horizontal = 80.dp, vertical = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -594,7 +594,7 @@ private fun ParkCard(modifier: Modifier) {
         Text("🔒", fontSize = 40.sp)
         Text("주차 후 확인해 주세요", fontSize = 30.sp, fontWeight = FontWeight.Bold)
         Text("P단으로 전환하면 주행 결과를 확인할 수 있어요.", fontSize = 20.sp, color = Color(0xFFCBD3DF))
-        Text("진행 기록 저장 완료", fontSize = 16.sp, color = Muted)
+        if (saved) Text("진행 기록 저장 완료", fontSize = 16.sp, color = Muted)
     }
 }
 

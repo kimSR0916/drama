@@ -86,6 +86,7 @@ data class UiState(
     val linked: Boolean = false,
     val harshToast: HarshKind? = null,
     val liveScore: Int? = null,
+    val autoSaved: Boolean = false,
 )
 
 class DramaViewModel(app: Application) : AndroidViewModel(app) {
@@ -166,6 +167,7 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
         post {
             it.copy(
                 talkOpen = talkOpen,
+                autoSaved = (session.view.drive as? DriveState.Arrived)?.trip?.played?.let { it > 0 } == true,
                 liveScore = when (val d = session.view.drive) {
                     is DriveState.Driving -> safetyScore(d.trip.harsh)
                     is DriveState.Arrived -> safetyScore(d.trip.harsh)
