@@ -148,7 +148,7 @@ private fun arrive(trip: Trip, now: Long): Step {
     }
     return Step(
         DriveState.Arrived(settled, save),
-        effects + listOfNotNull(ending?.let { say(Speaker.CHARACTER, it) }, Effect.Bgm(false), Effect.Save(save)),
+        effects + listOfNotNull(ending?.let { say(Speaker.CHARACTER, it) }, Effect.Bgm(false), Effect.Save(save).takeIf { settled.played > 0 }),
     )
 }
 
@@ -164,7 +164,7 @@ private fun driving(trip: Trip, event: DriveEvent): Step {
     fun stay(t: Trip, effects: List<Effect> = emptyList()) = Step(DriveState.Driving(t), effects)
     return when (event) {
         is DriveEvent.Tick -> {
-            val t = trip.copy(etaMinutes = event.etaMinutes)
+            val t = trip.copy(etaMinutes = event.etaMinutes, lastBeatEta = maxOf(trip.lastBeatEta, event.etaMinutes))
             val pending = t.pending
             when {
                 event.etaMinutes <= ARRIVAL_LEAD_MINUTES -> arrive(t, event.now)

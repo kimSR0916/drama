@@ -54,6 +54,11 @@ class AuthoringTest {
         listOf(s, builtins[0]).forEach { store.putScenario(it); assertEquals(it, store.getScenario(it.id)) }
     }
 
+    @Test fun longChapterTitleStillGetsADefaultRewardName() {
+        val r = parseScenarioJson(customDraftJson("제목", "세계", "루나", "요정", "가".repeat(40), "출발!", listOf("안녕")), "u1", ScenarioSource.CUSTOM)
+        assertTrue(r is DraftResult.Ok)
+    }
+
     @Test fun storeKeepsSavesAndLogsPerAccount() {
         val kv = MemoryKeyValue()
         val a = AccountStore(kv, "alice")

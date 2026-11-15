@@ -60,9 +60,16 @@ class DriveTest {
         assertTrue("답이 없군. 원래 길로 가지." in spoken(capped))
     }
 
-    @Test fun parkingWithoutAnySceneEarnsNoBond() {
-        val (state, _) = feed(begin(30.0), DriveEvent.GearChanged(Gear.P, 1000))
+    @Test fun parkingWithoutAnySceneEarnsNoBondAndLeavesNoResumePoint() {
+        val (state, effects) = feed(begin(30.0), DriveEvent.GearChanged(Gear.P, 1000))
         assertEquals(0, (state as DriveState.Parked).report.bondAfter.points)
+        assertTrue(effects.none { it is Effect.Save })
+    }
+
+    @Test fun scenesStillPlayWhenTheLiveEtaIsLongerThanTheChosenOne() {
+        val ticks = (0..20).map { m -> DriveEvent.Tick(m * 60_000L, 40.0 - m) }
+        val (_, effects) = feed(begin(15.0), *ticks.toTypedArray())
+        assertTrue("잘 모는군." in spoken(effects))
     }
 
     @Test fun reactionsHaveACooldownButEveryHarshEventCounts() {

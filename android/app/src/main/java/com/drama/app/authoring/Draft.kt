@@ -96,7 +96,7 @@ fun parseScenarioJson(o: JSONObject?, id: String, source: ScenarioSource): Draft
             beats = beats,
             cliffhanger = r.text(c, "cliffhanger", "$at 소결말 대사", fallback = "오늘은 여기까지. 다음 운전에서 이어갈게요."),
             finale = r.text(c, "finale", "$at 결말 대사", fallback = "$chapterTitle, 여기서 마무리예요."),
-            reward = r.text(c, "reward", "$at 보상 카드 이름", Limits.TITLE, fallback = "$chapterTitle 기념 카드"),
+            reward = r.text(c, "reward", "$at 보상 카드 이름", Limits.TITLE, fallback = "${chapterTitle.take(Limits.TITLE - 6)} 기념 카드"),
         )
     }
 

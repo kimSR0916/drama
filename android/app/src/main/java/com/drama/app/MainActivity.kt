@@ -491,7 +491,6 @@ private fun AuthoringScreen(vm: DramaViewModel, ui: UiState, close: () -> Unit) 
             }
         }
         item { OutlinedTextField(beats, { beats = it }, label = { Text("장면 대사 (한 줄에 하나)") }, minLines = 4, modifier = Modifier.fillMaxWidth()) }
-        items(ui.authoringIssues) { Text(it, color = Danger, fontSize = 18.sp) }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 BigButton("저장") {
@@ -500,5 +499,6 @@ private fun AuthoringScreen(vm: DramaViewModel, ui: UiState, close: () -> Unit) 
                 BigButton("닫기", Panel, onClick = close)
             }
         }
+        items(ui.authoringIssues) { Text(it, color = Danger, fontSize = 18.sp) }
     }
 }
