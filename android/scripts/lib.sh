@@ -42,7 +42,13 @@ fresh() {
   "$ADB" shell pm clear --user current com.drama.app >/dev/null
   grant
   launch
-  expect "오늘은 어떤 이야기를 달릴까요?"
+  tap "계정 연결"
+  expect "내 테마"
+}
+
+pick() {
+  tap "$1"
+  tap "이 테마 사용"
 }
 
 absent() {

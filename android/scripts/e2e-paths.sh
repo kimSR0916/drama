@@ -10,18 +10,18 @@ source "$(dirname "$0")/lib.sh"
 short_trip() {
   local title="$1" detour="$2" answer="$3" reply="$4" closing="$5"
   echo "== $title ($answer)"
-  tap "$title"
-  tap "시작하기"
+  pick "$title"
+  tap "스토리 재생"
   tap "8분"
-  expect "핵심 장면 압축"
-  tap "주행 시작"
+  expect "단거리 스토리"
+  tap "이 목적지로 설정"
   expect "$detour" 60
   case "$answer" in
     detour) tap "$detour" ;;
     keep) tap "기존 경로 유지" ;;
     timeout) ;;
   esac
-  expect "P단 체결 시 리포트" 120
+  expect "주차 후 확인해 주세요" 120
   tap "기어 P"
   expect "오늘의 주행 결과"
   tap "이전 대화 기록"
@@ -29,7 +29,7 @@ short_trip() {
   expect "$closing"
   tap "닫기"
   tap "처음으로"
-  expect "오늘은 어떤 이야기를 달릴까요?"
+  expect "내 테마"
 }
 
 "$ADB" logcat -c -b crash
@@ -42,54 +42,54 @@ short_trip "심야 택시: 수상한 손님" "시계탑으로 우회" keep "가�
 crashed
 
 echo "== declining both returns to select, restart opens from the beginning"
-tap "사라진 연구원"
+pick "사라진 연구원"
 expect "이어서 하시겠습니까?"
-tap "아니오"
+tap "아니요"
 expect "처음부터 시작하시겠습니까?"
-tap "아니오"
-expect "오늘은 어떤 이야기를 달릴까요?"
-tap "사라진 연구원"
-tap "아니오"
+tap "아니요"
+expect "내 테마"
+pick "사라진 연구원"
+tap "아니요"
 tap "예"
 tap "8분"
-tap "주행 시작"
+tap "이 목적지로 설정"
 expect "연구소 마지막 신호가 잡혔습니다"
 tap "기어 P"
 expect "오늘의 주행 결과"
 tap "처음으로"
 
 echo "== finished single-chapter story offers a new start"
-tap "심야 택시: 수상한 손님"
+pick "심야 택시: 수상한 손님"
 expect "이어서 하시겠습니까?"
 tap "예"
 tap "32분"
-expect "풀 에피소드"
-tap "주행 시작"
+expect "장거리 스토리"
+tap "이 목적지로 설정"
 expect "지난 이야기: 손님은"
 tap "정체 발생"
-expect "P단 체결 시 리포트" 240
+expect "주차 후 확인해 주세요" 240
 tap "기어 P"
 expect "100%"
 tap "처음으로"
-tap "심야 택시: 수상한 손님"
-expect "시작하기"
+pick "심야 택시: 수상한 손님"
+expect "스토리 재생"
 absent "이어서 하시겠습니까?"
 tap "뒤로"
 
 echo "== relaunch mid-drive returns to select with progress intact"
-tap "폭주 기관차 777"
+pick "폭주 기관차 777"
 expect "이어서 하시겠습니까?"
 tap "예"
 tap "32분"
-tap "주행 시작"
+tap "이 목적지로 설정"
 expect "지난 이야기: 녹슨"
 "$ADB" shell am force-stop com.drama.app
 launch
-expect "오늘은 어떤 이야기를 달릴까요?"
-tap "폭주 기관차 777"
+expect "내 테마"
+pick "폭주 기관차 777"
 expect "이어서 하시겠습니까?"
-tap "아니오"
-tap "아니오"
+tap "아니요"
+tap "아니요"
 
 echo "== custom scenario from the authoring screen"
 tap "내 시나리오 만들기"
@@ -105,14 +105,14 @@ type_into "1장 제목" "Ch1"
 type_into "도입 대사" "Here%swe%sgo"
 type_into "장면 대사 (한 줄에 하나)" "First%sscene"
 tap "저장"
-expect "오늘은 어떤 이야기를 달릴까요?"
-tap "MyStory"
-tap "시작하기"
+expect "내 테마"
+pick "MyStory"
+tap "스토리 재생"
 tap "8분"
-tap "주행 시작"
+tap "이 목적지로 설정"
 expect "Here we go"
 expect "First scene" 60
-expect "P단 체결 시 리포트" 120
+expect "주차 후 확인해 주세요" 120
 tap "기어 P"
 expect "Ch1 기념 카드"
 tap "처음으로"
@@ -129,14 +129,15 @@ if [ -n "$APK" ]; then
     grep -q 'text="허용 안함"' <<<"$(ui)" || break
     tap "허용 안함"
   done
-  expect "오늘은 어떤 이야기를 달릴까요?"
-  tap "사라진 연구원"
-  tap "시작하기"
+  tap "계정 연결"
+  expect "내 테마"
+  pick "사라진 연구원"
+  tap "스토리 재생"
   tap "8분"
-  tap "주행 시작"
+  tap "이 목적지로 설정"
   expect "우회 도로로 빠진다" 60
   tap "우회 도로로 빠진다"
-  expect "P단 체결 시 리포트" 120
+  expect "주차 후 확인해 주세요" 120
   tap "기어 P"
   expect "오늘의 주행 결과"
   crashed

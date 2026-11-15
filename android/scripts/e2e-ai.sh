@@ -42,17 +42,17 @@ tap "닫기"
 tap "내 시나리오 만들기"
 type_into "한 줄 아이디어" "ambulance"
 tap "AI로 생성"
-expect "오늘은 어떤 이야기를 달릴까요?" 30
+expect "내 테마" 30
 expect "새벽의 구급차"
 grep -c "/v1/messages" "$OUT/fake-llm.log" | grep -q "^3$" || { echo "FAIL: expected 3 LLM calls (1 rejected key, 1 invalid draft, 1 valid)" >&2; cat "$OUT/fake-llm.log" >&2; exit 1; }
 echo "ok: one retry after the rule-breaking draft"
 shot 1-generated
 
 echo "== generated lines replace reactions and sub scenes, choices stay scripted"
-tap "새벽의 구급차"
-tap "시작하기"
+pick "새벽의 구급차"
+tap "스토리 재생"
 tap "15분"
-tap "주행 시작"
+tap "이 목적지로 설정"
 expect "기사님, 환자를 태웠어요"
 sleep 3
 tap "급제동"
@@ -65,7 +65,7 @@ shot 2-driving
 echo "== talking to the character"
 tap "말 걸기"
 expect "(AI) 안전한 곳으로 가는 중이에요" 20
-expect "P단 체결 시 리포트" 120
+expect "주차 후 확인해 주세요" 120
 tap "기어 P"
 expect "오늘의 주행 결과"
 tap "이전 대화 기록"

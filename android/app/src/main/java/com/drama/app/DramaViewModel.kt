@@ -51,6 +51,7 @@ import kotlinx.coroutines.launch
 const val DEMO_SPEED = 10
 const val AI_TIMEOUT_SECONDS = 180L
 const val TALK_WINDOW_MS = 10_000L
+const val HARSH_TOAST_MS = 4_000L
 const val TALK_MAX_CHARS = 100
 const val TALK_FALLBACK = "지금은 대답하기 어렵네요. 조금 있다 다시 이야기해요."
 private const val TICK_MS = 1_000L
@@ -80,6 +81,8 @@ data class UiState(
     val aiCreatedId: String? = null,
     val aiBaseUrl: String = "",
     val talkOpen: Boolean = false,
+    val linked: Boolean = false,
+    val harshToast: HarshKind? = null,
 )
 
 class DramaViewModel(app: Application) : AndroidViewModel(app) {
@@ -95,6 +98,7 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
         deliver = { block -> viewModelScope.launch { block() } },
     )
     private var talkOpen = false
+    private var harshToastUntil = 0L
 
     private fun now() = SystemClock.elapsedRealtime()
 
@@ -134,6 +138,7 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         configureAi(aiPrefs.getString("key", "").orEmpty(), aiPrefs.getString("baseUrl", "").orEmpty(), announce = false)
+        post { it.copy(linked = aiPrefs.getBoolean("linked", false)) }
         builtins.forEach(store::putScenario)
         vehicle.start()
         navi.start()
@@ -268,6 +273,7 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
     fun onPermissionsChanged() = vehicle.ensureSpeed()
 
     private fun tick(forceArrival: Boolean = false) {
+        if (_ui.value.harshToast != null && now() >= harshToastUntil) post { it.copy(harshToast = null) }
         navi.poll()
         if (session.view.drive !is DriveState.Driving) {
             if (_ui.value.naviEtaMinutes != naviFresh()) refresh()
@@ -298,7 +304,19 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun choose(hint: RouteHint, via: InputVia = InputVia.BUTTON) { session.send(DriveEvent.DriverInput(hint, via, now())); refresh() }
-    fun harsh(kind: HarshKind) { session.send(DriveEvent.HarshDriving(kind, now())); refresh() }
+    fun harsh(kind: HarshKind) {
+        if (session.view.drive is DriveState.Driving) {
+            harshToastUntil = now() + HARSH_TOAST_MS
+            post { it.copy(harshToast = kind) }
+        }
+        session.send(DriveEvent.HarshDriving(kind, now()))
+        refresh()
+    }
+
+    fun linkAccount() {
+        aiPrefs.edit().putBoolean("linked", true).apply()
+        post { it.copy(linked = true) }
+    }
     fun guidance(text: String) { session.send(DriveEvent.RouteGuidance(text, now())); refresh() }
     fun gear(gear: Gear) { session.send(DriveEvent.GearChanged(gear, now())); refresh() }
     fun emergency(cause: EmergencyCause) { session.send(DriveEvent.Emergency(cause, now())); refresh() }
