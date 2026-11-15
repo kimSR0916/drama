@@ -308,6 +308,7 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
     fun setDemoMode(on: Boolean) = post { it.copy(demoMode = on) }
 
     fun startDriving() {
+        post { it.copy(harshToast = null) }
         director.reset()
         session.startDriving()
         etaMinutes = session.view.etaMinutes

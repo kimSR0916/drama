@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stand-in for the Claude Messages API so the emulator suite can exercise the app's AI paths without a key.
 
-Usage: scripts/fake-llm.py [port]   (the emulator reaches it at http://10.0.2.2:<port>)
+Usage: scripts/fake-llm.py [port]   (e2e-ai.sh forwards the port with `adb reverse`, so the app uses http://localhost:<port>)
 The first scenario request gets a rule-breaking draft so the app's validate-and-retry loop runs.
 """
 import json
