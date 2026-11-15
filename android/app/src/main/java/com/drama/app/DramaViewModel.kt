@@ -49,7 +49,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 const val DEMO_SPEED = 10
-const val AI_TIMEOUT_SECONDS = 180L
+const val LINE_TIMEOUT_SECONDS = 20L
+const val SCENARIO_TIMEOUT_SECONDS = 600L
 const val TALK_WINDOW_MS = 10_000L
 const val HARSH_TOAST_MS = 4_000L
 const val TALK_MAX_CHARS = 100
@@ -93,6 +94,8 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
 
     private val aiPrefs = app.getSharedPreferences("drama-ai", Context.MODE_PRIVATE)
     private var llm: Llm? = null
+    private var scenarioLlm: Llm? = null
+    private var talkToken = 0
     private val director = AiDirector(
         background = { work -> viewModelScope.launch(Dispatchers.IO) { work() } },
         deliver = { block -> viewModelScope.launch { block() } },
@@ -156,6 +159,7 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun refresh() {
+        if (session.view.choices != null) talkOpen = false
         prepareLines()
         post {
             it.copy(
@@ -172,7 +176,8 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
         val k = key.trim()
         val url = baseUrl.trim()
         aiPrefs.edit().putString("key", k).putString("baseUrl", url).apply()
-        llm = if (k.isEmpty()) null else ClaudeLlm(k, url.ifEmpty { null }, Duration.ofSeconds(AI_TIMEOUT_SECONDS))
+        llm = if (k.isEmpty()) null else ClaudeLlm(k, url.ifEmpty { null }, Duration.ofSeconds(LINE_TIMEOUT_SECONDS))
+        scenarioLlm = if (k.isEmpty()) null else ClaudeLlm(k, url.ifEmpty { null }, Duration.ofSeconds(SCENARIO_TIMEOUT_SECONDS))
         director.writer = llm?.let(::LineWriter)
         post {
             it.copy(
@@ -213,14 +218,18 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
         director.prepare(context, wanted)
     }
 
+    /** Saving with the key field left empty keeps the stored key, so changing only the server address does not turn AI off. */
+    fun saveAiSettings(key: String, baseUrl: String) =
+        configureAi(key.trim().ifEmpty { aiPrefs.getString("key", "").orEmpty() }, baseUrl)
+
     fun generateScenario(idea: String) {
-        val model = llm
+        val model = scenarioLlm
         if (model == null) {
             post { it.copy(aiMessage = "AI 설정에서 API 키를 먼저 입력해 주세요.") }
             return
         }
         if (_ui.value.aiBusy) return
-        post { it.copy(aiBusy = true, aiMessage = "AI가 시나리오를 쓰는 중입니다. 1~2분 걸릴 수 있어요.") }
+        post { it.copy(aiBusy = true, aiMessage = "AI가 시나리오를 쓰는 중입니다. 몇 분 걸릴 수 있어요.") }
         val id = "custom-${System.currentTimeMillis()}"
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) { runCatching { ScenarioWriter(model).write(idea, id) }.getOrElse { WriteResult.Failed("AI 호출에 실패했습니다.") } }
@@ -240,11 +249,12 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
         val text = utterance.trim().take(TALK_MAX_CHARS)
         if (text.isEmpty() || !session.driverSaid(text)) return
         val context = driveContext()
+        val trip = session.tripStartedAt
         refresh()
-        if (context == null) return
+        if (context == null || trip == null) return
         viewModelScope.launch {
-            val reply = withContext(Dispatchers.IO) { runCatching { LineWriter(model).reply(context.copy(recent = session.view.log), text) }.getOrNull() }
-            session.characterReplied(reply ?: TALK_FALLBACK)
+            val reply = withContext(Dispatchers.IO) { runCatching { LineWriter(model).reply(context, text) }.getOrNull() }
+            session.characterReplied(reply ?: TALK_FALLBACK, trip)
             refresh()
         }
     }
@@ -252,10 +262,11 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
     private fun openTalkWindow() {
         if (llm == null || session.view.choices != null || session.view.drive !is DriveState.Driving) return
         talkOpen = true
+        val token = ++talkToken
         voice.listen { }
         viewModelScope.launch {
             delay(TALK_WINDOW_MS)
-            if (talkOpen) {
+            if (talkOpen && token == talkToken) {
                 talkOpen = false
                 if (session.view.choices == null) voice.stopListening()
                 refresh()

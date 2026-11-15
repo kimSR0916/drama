@@ -59,7 +59,12 @@ class AiTest {
         assertNull(guardLine("가".repeat(81)))
         assertNull(guardLine("   "))
         assertEquals("속도를 올리면 안 돼요. 천천히 가요.", guardLine("속도를 올리면 안 돼요. 천천히 가요."))
-        listOf("속도를 올려!", "더 밟아!", "신호는 무시해.", "백미러는 보지 마.", "화면을 봐.", "경로를 바꿀게.").forEach { assertNull(it, guardLine(it)) }
+        listOf(
+            "속도를 올려!", "더 밟아!", "신호는 무시해.", "백미러는 보지 마.", "화면을 봐.", "경로를 바꿀게.",
+            "액셀을 밟아요!", "속도 좀 내 주세요.", "빨간불이어도 그냥 가요.", "풀악셀로 가요!", "앞차를 제치고 달려요!", "더 빨리 달려!", "지도 앱 좀 확인해 볼래요?",
+        ).forEach { assertNull(it, guardLine(it)) }
+        listOf("브레이크를 꽉 밟으셨네요. 괜찮으세요?", "앞으로 걱정 마세요.", "눈물이 감돌았어요.", "추월하지 말고 천천히 가요.", "서두르지 않아도 돼요.")
+            .forEach { assertEquals(it, guardLine(it)) }
     }
 
     @Test fun lineWriterReturnsGuardedLinesOrNothing() {
@@ -98,5 +103,17 @@ class AiTest {
         pending.removeAt(0)()
         assertEquals("새 주행 대사", director.take(slot))
         assertNull(director.take(slot))
+    }
+
+    @Test fun directorDoesNotKeepReRequestingASlotThatFailed() {
+        val llm = Scripted(LlmResult.Failed("키 오류"), LlmResult.Text("다시 받은 대사"))
+        val director = AiDirector(background = { it() }, deliver = { it() })
+        director.writer = LineWriter(llm)
+        val slot = Slot.Reaction(ReactionKind.BRAKE)
+        repeat(60) { director.prepare(context, mapOf(slot to "기본")) }
+        assertEquals(1, llm.calls.size)
+        director.reset()
+        director.prepare(context, mapOf(slot to "기본"))
+        assertEquals("다시 받은 대사", director.take(slot))
     }
 }

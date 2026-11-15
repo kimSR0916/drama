@@ -18,14 +18,18 @@ class AiDirector(
 
     private val ready = mutableMapOf<Slot, String>()
     private val inFlight = mutableSetOf<Slot>()
+    private val failed = mutableSetOf<Slot>()
     private var generation = 0
 
-    fun take(slot: Slot): String? = ready.remove(slot)
+    fun take(slot: Slot): String? {
+        failed -= slot
+        return ready.remove(slot)
+    }
 
     fun prepare(context: DriveContext, wanted: Map<Slot, String>) {
         val w = writer ?: return
         for ((slot, scripted) in wanted) {
-            if (slot in ready || slot in inFlight) continue
+            if (slot in ready || slot in inFlight || slot in failed) continue
             inFlight += slot
             val started = generation
             background {
@@ -33,7 +37,7 @@ class AiDirector(
                 deliver {
                     if (started == generation) {
                         inFlight -= slot
-                        if (line != null) ready[slot] = line
+                        if (line != null) ready[slot] = line else failed += slot
                     }
                 }
             }
@@ -44,5 +48,6 @@ class AiDirector(
         generation++
         ready.clear()
         inFlight.clear()
+        failed.clear()
     }
 }

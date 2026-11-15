@@ -141,8 +141,16 @@ class Session(
         return true
     }
 
-    fun characterReplied(text: String) {
-        if (canTalk) log(LogEntry(Speaker.CHARACTER, text))
+    val tripStartedAt: Long?
+        get() = when (val d = view.drive) {
+            is DriveState.Driving -> d.trip.startedAt
+            is DriveState.Arrived -> d.trip.startedAt
+            else -> null
+        }
+
+    /** A reply that arrives after a route question opened, or after its drive ended, is dropped. */
+    fun characterReplied(text: String, forTrip: Long) {
+        if (canTalk && view.choices == null && tripStartedAt == forTrip) log(LogEntry(Speaker.CHARACTER, text))
     }
 
     fun reset() {

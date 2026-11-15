@@ -704,12 +704,12 @@ private fun AiSettingsScreen(vm: DramaViewModel, ui: UiState, close: () -> Unit)
                 "키는 이 기기에만 저장됩니다. 키가 없으면 미리 쓴 장면으로 진행합니다.",
             color = Muted, fontSize = 20.sp,
         )
-        Text(if (ui.aiEnabled) "현재 상태: 켜짐 (저장된 키 사용 중)" else "현재 상태: 꺼짐", fontSize = 22.sp)
+        Text(if (ui.aiEnabled) "현재 상태: 켜짐 (저장된 키 사용 중. 키 칸을 비워 두고 저장하면 그대로 유지됩니다)" else "현재 상태: 꺼짐", fontSize = 22.sp)
         OutlinedTextField(key, { key = it }, label = { Text("API 키") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
         OutlinedTextField(baseUrl, { baseUrl = it }, label = { Text("서버 주소 (비워 두면 기본값)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         ui.aiMessage?.let { Text(it, color = Accent, fontSize = 20.sp) }
         Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            BigButton("저장") { vm.configureAi(key, baseUrl) }
+            BigButton("저장") { vm.saveAiSettings(key, baseUrl) }
             BigButton("AI 끄기", Panel) { vm.configureAi("", baseUrl) }
             BigButton("닫기", Panel, onClick = close)
         }

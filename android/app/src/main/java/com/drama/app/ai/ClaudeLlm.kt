@@ -2,6 +2,7 @@ package com.drama.app.ai
 
 import com.anthropic.client.AnthropicClient
 import com.anthropic.client.okhttp.AnthropicOkHttpClient
+import com.anthropic.errors.AnthropicException
 import com.anthropic.errors.AnthropicIoException
 import com.anthropic.errors.AnthropicServiceException
 import com.anthropic.errors.RateLimitException
@@ -14,12 +15,13 @@ import java.time.Duration
 const val CLAUDE_MODEL = "claude-opus-5-5"
 private const val FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
+/** One attempt per call: a retry after a timeout would bill a long generation twice. */
 class ClaudeLlm(apiKey: String, baseUrl: String?, timeout: Duration) : Llm {
     private val client: AnthropicClient = AnthropicOkHttpClient.builder()
         .apiKey(apiKey)
         .apply { if (!baseUrl.isNullOrBlank()) baseUrl(baseUrl) }
         .timeout(timeout)
-        .maxRetries(1)
+        .maxRetries(0)
         .build()
 
     override fun complete(system: String, turns: List<Turn>, effort: Effort, maxTokens: Long): LlmResult {
@@ -59,7 +61,9 @@ class ClaudeLlm(apiKey: String, baseUrl: String?, timeout: Duration) : Llm {
         } catch (e: AnthropicServiceException) {
             LlmResult.Failed("AI 서버 오류 (${e.statusCode()})")
         } catch (e: AnthropicIoException) {
-            LlmResult.Failed("네트워크에 연결할 수 없습니다.")
+            LlmResult.Failed("네트워크 오류이거나 응답이 너무 오래 걸렸습니다.")
+        } catch (e: AnthropicException) {
+            LlmResult.Failed("AI 응답을 처리하지 못했습니다.")
         }
     }
 }
