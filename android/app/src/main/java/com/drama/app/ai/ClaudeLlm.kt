@@ -10,12 +10,16 @@ import com.anthropic.errors.UnauthorizedException
 import com.anthropic.models.beta.messages.BetaOutputConfig
 import com.anthropic.models.beta.messages.BetaStopReason
 import com.anthropic.models.beta.messages.MessageCreateParams
+import java.io.InterruptedIOException
 import java.time.Duration
 
 const val CLAUDE_MODEL = "claude-opus-5-5"
 private const val FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
-/** One attempt per call: a retry after a timeout would bill a long generation twice. */
+/**
+ * The SDK never retries: resending after a timeout would bill a long generation twice.
+ * A connection that failed before any response is retried once here, because nothing was generated.
+ */
 class ClaudeLlm(apiKey: String, baseUrl: String?, timeout: Duration) : Llm {
     private val client: AnthropicClient = AnthropicOkHttpClient.builder()
         .apiKey(apiKey)
@@ -44,6 +48,13 @@ class ClaudeLlm(apiKey: String, baseUrl: String?, timeout: Duration) : Llm {
                 turns.forEach { if (it.role == Role.USER) addUserMessage(it.text) else addAssistantMessage(it.text) }
             }
             .build()
+        return attempt(params, retryConnection = true)
+    }
+
+    private fun timedOut(e: Throwable): Boolean =
+        generateSequence(e) { it.cause }.any { it is InterruptedIOException }
+
+    private fun attempt(params: MessageCreateParams, retryConnection: Boolean): LlmResult {
         return try {
             val message = client.beta().messages().create(params)
             val reason = message.stopReason().orElse(null)
@@ -61,7 +72,11 @@ class ClaudeLlm(apiKey: String, baseUrl: String?, timeout: Duration) : Llm {
         } catch (e: AnthropicServiceException) {
             LlmResult.Failed("AI 서버 오류 (${e.statusCode()})")
         } catch (e: AnthropicIoException) {
-            LlmResult.Failed("네트워크 오류이거나 응답이 너무 오래 걸렸습니다.")
+            when {
+                timedOut(e) -> LlmResult.Failed("응답이 너무 오래 걸렸습니다.")
+                retryConnection -> attempt(params, retryConnection = false)
+                else -> LlmResult.Failed("네트워크에 연결할 수 없습니다.")
+            }
         } catch (e: AnthropicException) {
             LlmResult.Failed("AI 응답을 처리하지 못했습니다.")
         }

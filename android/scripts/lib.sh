@@ -24,7 +24,8 @@ expect() {
     grep -q "$1" <<<"$(ui)" && { echo "ok: $1"; return; }
     sleep 1
   done
-  echo "FAIL: expected '$1'" >&2
+  echo "FAIL: expected '$1'; on screen:" >&2
+  ui | grep -oE 'text="[^"]+"' | head -12 >&2
   exit 1
 }
 

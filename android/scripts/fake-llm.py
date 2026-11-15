@@ -6,7 +6,7 @@ The first scenario request gets a rule-breaking draft so the app's validate-and-
 """
 import json
 import sys
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 SCENARIO = {
     "genre": "재난·드라마",
@@ -85,6 +85,8 @@ def reply_for(body):
 
 
 class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers.get("content-length", 0))) or b"{}")
         credential = (self.headers.get("x-api-key") or "") + (self.headers.get("authorization") or "")
@@ -110,4 +112,4 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    HTTPServer(("0.0.0.0", int(sys.argv[1]) if len(sys.argv) > 1 else 8787), Handler).serve_forever()
+    ThreadingHTTPServer(("0.0.0.0", int(sys.argv[1]) if len(sys.argv) > 1 else 8787), Handler).serve_forever()
