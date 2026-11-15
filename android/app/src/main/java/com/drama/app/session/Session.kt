@@ -1,7 +1,8 @@
 package com.drama.app.session
 
 import com.drama.app.authoring.AccountStore
-import com.drama.app.core.Choice
+import com.drama.app.authoring.LogEntry
+import com.drama.app.core.Branch
 import com.drama.app.core.DriveEvent
 import com.drama.app.core.DriveReport
 import com.drama.app.core.DriveState
@@ -15,15 +16,12 @@ import com.drama.app.core.drive
 import com.drama.app.core.preDrive
 import com.drama.app.core.startDrive
 
-enum class LineSpeaker { NARRATOR, CHARACTER, SYSTEM }
-
-data class Line(val speaker: LineSpeaker, val text: String)
-
 data class SessionView(
     val pre: PreDriveState = PreDriveState.Selecting,
     val drive: DriveState? = null,
-    val transcript: List<Line> = emptyList(),
-    val choices: List<Choice>? = null,
+    val subtitle: LogEntry? = null,
+    val log: List<LogEntry> = emptyList(),
+    val choices: Branch? = null,
     val uxLocked: Boolean = false,
     val bgm: Boolean = false,
     val sos: EmergencyCause? = null,
@@ -32,12 +30,12 @@ data class SessionView(
 )
 
 interface Outputs {
-    fun speak(line: Line)
+    fun speak(text: String)
     fun stopAllAudio()
     fun bgm(on: Boolean)
     fun reroute(prefer: RouteHint)
     fun sos(cause: EmergencyCause)
-    fun listenForChoice(choices: List<Choice>)
+    fun listenForChoice(branch: Branch)
     fun stopListening()
 }
 
@@ -45,14 +43,26 @@ class Session(private val store: AccountStore, private val outputs: Outputs, pri
     var view = SessionView()
         private set
 
-    private fun log(line: Line) {
-        view = view.copy(transcript = (view.transcript + line).takeLast(50))
-        outputs.speak(line)
+    private val scenarioId: String?
+        get() = when (val p = view.pre) {
+            is PreDriveState.Ready -> p.scenario.id
+            is PreDriveState.AwaitingDestination -> p.scenario.id
+            is PreDriveState.AskResume -> p.scenario.id
+            is PreDriveState.AskRestart -> p.scenario.id
+            is PreDriveState.OfferNew -> p.scenario.id
+            PreDriveState.Selecting -> null
+        }
+
+    private fun log(entry: LogEntry) {
+        view = view.copy(subtitle = entry, log = view.log + entry)
+        if (entry.speaker != Speaker.DRIVER) outputs.speak(entry.text)
     }
+
+    private fun persistLog() = scenarioId?.let { store.putLog(it, view.log) }
 
     private fun apply(effects: List<Effect>) {
         for (e in effects) when (e) {
-            is Effect.Speak -> log(Line(if (e.speaker == Speaker.NARRATOR) LineSpeaker.NARRATOR else LineSpeaker.CHARACTER, e.text))
+            is Effect.Speak -> log(LogEntry(e.speaker, e.text))
             is Effect.Bgm -> {
                 view = view.copy(bgm = e.on)
                 outputs.bgm(e.on)
@@ -67,18 +77,18 @@ class Session(private val store: AccountStore, private val outputs: Outputs, pri
                 outputs.sos(e.cause)
             }
             is Effect.ShowChoices -> {
-                view = view.copy(choices = e.choices)
-                outputs.listenForChoice(e.choices)
+                view = view.copy(choices = e.branch)
+                outputs.listenForChoice(e.branch)
             }
             Effect.HideChoices -> {
                 view = view.copy(choices = null)
                 outputs.stopListening()
             }
-            is Effect.Reroute -> {
-                outputs.reroute(e.prefer)
-                view = view.copy(transcript = view.transcript + Line(LineSpeaker.SYSTEM, if (e.prefer == RouteHint.DETOUR) "우회 경로로 재탐색합니다." else "현재 경로를 유지합니다."))
+            is Effect.Reroute -> outputs.reroute(e.prefer)
+            is Effect.Save -> {
+                store.putSave(e.data)
+                persistLog()
             }
-            is Effect.Save -> store.putSave(e.data)
             is Effect.UxRestrictions -> view = view.copy(uxLocked = e.active)
             is Effect.ShowReport -> view = view.copy(report = e.report)
         }
@@ -87,11 +97,17 @@ class Session(private val store: AccountStore, private val outputs: Outputs, pri
     fun pre(event: PreDriveEvent) {
         if (view.drive != null) return
         view = view.copy(pre = preDrive(view.pre, event))
+        if (event is PreDriveEvent.Answer && event.yes && view.pre is PreDriveState.AwaitingDestination) {
+            val p = view.pre as PreDriveState.AwaitingDestination
+            view = view.copy(log = if (p.resumed) store.getLog(p.scenario.id) else emptyList())
+        }
+        if (event is PreDriveEvent.StartNew) view = view.copy(log = emptyList())
     }
 
     fun selectStory(scenarioId: String) {
         val scenario = store.getScenario(scenarioId) ?: return
         pre(PreDriveEvent.SelectStory(scenario, store.getSave(scenarioId)))
+        view = view.copy(log = store.getLog(scenarioId))
     }
 
     fun startDriving() {

@@ -93,11 +93,10 @@ class VehicleSignals(
     }
 
     fun start() {
-        runCatching {
-            vehicle.initialize()
-            vehicle.getGear().registerGearSelection(gearListener)
-            driverSeats.forEach { vehicle.getSafety().registerSeatAirbagDeployed(it, airbagListener) }
-        }.onFailure { Log.w(TAG, "Pleos Vehicle unavailable", it) }
+        runCatching { vehicle.initialize() }.onFailure { Log.w(TAG, "Pleos Vehicle unavailable", it) }
+        runCatching { driverSeats.forEach { vehicle.getSafety().registerSeatAirbagDeployed(it, airbagListener) } }
+            .onFailure { Log.w(TAG, "airbag listener unavailable", it) }
+        runCatching { vehicle.getGear().registerGearSelection(gearListener) }.onFailure { Log.w(TAG, "gear listener unavailable", it) }
         ensureSpeed()
         runCatching {
             val ux = car?.getCarManager(Car.CAR_UX_RESTRICTION_SERVICE) as? CarUxRestrictionsManager

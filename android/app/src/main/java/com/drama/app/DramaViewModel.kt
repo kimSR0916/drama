@@ -6,12 +6,12 @@ import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.drama.app.authoring.AccountStore
-import com.drama.app.authoring.BUILTIN_SCENARIOS
 import com.drama.app.authoring.DraftResult
 import com.drama.app.authoring.KeyValue
-import com.drama.app.authoring.ScenarioDraft
-import com.drama.app.authoring.parseScenarioDraft
-import com.drama.app.core.Choice
+import com.drama.app.authoring.customDraftJson
+import com.drama.app.authoring.parseBuiltins
+import com.drama.app.authoring.parseScenarioJson
+import com.drama.app.core.Branch
 import com.drama.app.core.DriveEvent
 import com.drama.app.core.DriveState
 import com.drama.app.core.EmergencyCause
@@ -26,8 +26,6 @@ import com.drama.app.platform.NaviSignals
 import com.drama.app.platform.VehicleSignals
 import com.drama.app.platform.Voice
 import com.drama.app.platform.matchChoice
-import com.drama.app.session.Line
-import com.drama.app.session.LineSpeaker
 import com.drama.app.session.Outputs
 import com.drama.app.session.Session
 import com.drama.app.session.SessionView
@@ -56,10 +54,14 @@ data class UiState(
     val systemUxRestricted: Boolean = false,
     val naviEtaMinutes: Double? = null,
     val authoringIssues: List<String> = emptyList(),
+    val sosLocked: Boolean = false,
+    val answerSecondsLeft: Int? = null,
+    val speaking: String? = null,
 )
 
 class DramaViewModel(app: Application) : AndroidViewModel(app) {
     private val store = AccountStore(PrefsKeyValue(app), "local-account")
+    private val builtins = parseBuiltins(app.assets.open("scenarios.json").bufferedReader().use { it.readText() })
     private var naviEta: Pair<Long, Double>? = null
     private var etaMinutes = 0.0
 
@@ -69,7 +71,7 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { block() }
     }
 
-    private val voice = Voice(app) { heard -> onMain { onHeard(heard) } }
+    private val voice = Voice(app, onHeard = { heard -> onMain { onHeard(heard) } }, onSpeaking = { text -> onMain { post { it.copy(speaking = text) } } })
     private val navi = NaviSignals(
         app,
         clock = ::now,
@@ -86,15 +88,13 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
         onUxRestricted = { restricted -> onMain { post { it.copy(systemUxRestricted = restricted) } } },
     )
 
-    private val session = Session(store, object : Outputs {
-        override fun speak(line: Line) {
-            if (line.speaker != LineSpeaker.SYSTEM) voice.speak(line.text)
-        }
+    private val session: Session = Session(store, object : Outputs {
+        override fun speak(text: String) = voice.speak(text)
         override fun stopAllAudio() = voice.stopSpeaking()
         override fun bgm(on: Boolean) = Unit
         override fun reroute(prefer: RouteHint) = navi.reroute(prefer)
-        override fun sos(cause: EmergencyCause) = Unit
-        override fun listenForChoice(choices: List<Choice>) = voice.listen()
+        override fun sos(cause: EmergencyCause) = post { it.copy(sosLocked = true) }
+        override fun listenForChoice(branch: Branch) = voice.listen { onMain { session.send(DriveEvent.QuestionSpoken(now())); refresh() } }
         override fun stopListening() = voice.stopListening()
     }, clock = ::now)
 
@@ -102,7 +102,7 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
     val ui: StateFlow<UiState> = _ui.asStateFlow()
 
     init {
-        BUILTIN_SCENARIOS.forEach(store::putScenario)
+        builtins.forEach(store::putScenario)
         vehicle.start()
         navi.start()
         refresh()
@@ -121,8 +121,9 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
     private fun refresh() = post {
         it.copy(
             session = session.view,
-            stories = store.listScenarios().sortedBy { s -> if (s.source == ScenarioSource.CUSTOM) -1 else BUILTIN_SCENARIOS.indexOfFirst { it.id == s.id } },
+            stories = store.listScenarios().sortedBy { s -> if (s.source == ScenarioSource.CUSTOM) -1 else builtins.indexOfFirst { it.id == s.id } },
             naviEtaMinutes = naviFresh(),
+            answerSecondsLeft = (session.view.drive as? DriveState.Driving)?.trip?.pending?.takeIf { it.spoken }?.let { p -> ((p.deadline - now() + 999) / 1000).toInt().coerceAtLeast(0) },
         )
     }
 
@@ -164,7 +165,7 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
         refresh()
     }
 
-    fun choose(choiceId: String, via: InputVia = InputVia.BUTTON) { session.send(DriveEvent.DriverInput(choiceId, via, now())); refresh() }
+    fun choose(hint: RouteHint, via: InputVia = InputVia.BUTTON) { session.send(DriveEvent.DriverInput(hint, via, now())); refresh() }
     fun harsh(kind: HarshKind) { session.send(DriveEvent.HarshDriving(kind, now())); refresh() }
     fun guidance(text: String) { session.send(DriveEvent.RouteGuidance(text, now())); refresh() }
     fun gear(gear: Gear) { session.send(DriveEvent.GearChanged(gear, now())); refresh() }
@@ -179,21 +180,28 @@ class DramaViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun onHeard(text: String) {
         val choices = session.view.choices ?: return
-        matchChoice(text, choices)?.let { choose(it.id, InputVia.VOICE) }
+        matchChoice(text, choices)?.let { choose(it, InputVia.VOICE) }
     }
 
-    fun home() { session.reset(); refresh() }
+    fun home() {
+        if (_ui.value.sosLocked) return
+        session.reset()
+        refresh()
+    }
 
-    fun saveDraft(draft: ScenarioDraft): Boolean = when (val r = parseScenarioDraft(draft, "custom-${System.currentTimeMillis()}")) {
-        is DraftResult.Ok -> {
-            store.putScenario(r.scenario)
-            post { it.copy(authoringIssues = emptyList()) }
-            refresh()
-            true
-        }
-        is DraftResult.Invalid -> {
-            post { it.copy(authoringIssues = r.issues) }
-            false
+    fun saveDraft(title: String, premise: String, name: String, tone: String, chapterTitle: String, opening: String, lines: List<String>): Boolean {
+        val json = customDraftJson(title, premise, name, tone, chapterTitle, opening, lines)
+        return when (val r = parseScenarioJson(json, "custom-${System.currentTimeMillis()}", ScenarioSource.CUSTOM)) {
+            is DraftResult.Ok -> {
+                store.putScenario(r.scenario)
+                post { it.copy(authoringIssues = emptyList()) }
+                refresh()
+                true
+            }
+            is DraftResult.Invalid -> {
+                post { it.copy(authoringIssues = r.issues) }
+                false
+            }
         }
     }
 

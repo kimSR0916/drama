@@ -2,12 +2,16 @@ package com.drama.app.core
 
 const val ARRIVAL_LEAD_MINUTES = 1.0
 const val REACTION_COOLDOWN_MS = 30_000L
-const val CHOICE_TIMEOUT_MS = 30_000L
-private const val MINUTE = 60_000L
+const val ANSWER_WINDOW_MS = 5_000L
+const val QUESTION_SPEECH_CAP_MS = 30_000L
+const val SPEECH_MS_PER_CHAR = 110L
+const val LEAD_SILENCE_MS = 200L
+
+fun speechMs(text: String): Long = LEAD_SILENCE_MS + text.length * SPEECH_MS_PER_CHAR
 
 enum class Gear { P, R, N, D }
 enum class EmergencyCause { AIRBAG, COLLISION }
-enum class Speaker { NARRATOR, CHARACTER }
+enum class Speaker { NARRATOR, CHARACTER, DRIVER }
 enum class InputVia { VOICE, BUTTON }
 
 sealed interface DriveEvent {
@@ -17,7 +21,8 @@ sealed interface DriveEvent {
     data class HarshDriving(val kind: HarshKind, override val now: Long) : DriveEvent
     data class Congestion(override val now: Long) : DriveEvent
     data class RouteGuidance(val instruction: String, override val now: Long) : DriveEvent
-    data class DriverInput(val choiceId: String, val via: InputVia, override val now: Long) : DriveEvent
+    data class DriverInput(val hint: RouteHint, val via: InputVia, override val now: Long) : DriveEvent
+    data class QuestionSpoken(override val now: Long) : DriveEvent
     data class Emergency(val cause: EmergencyCause, override val now: Long) : DriveEvent
     data class GearChanged(val gear: Gear, override val now: Long) : DriveEvent
 }
@@ -27,7 +32,7 @@ sealed interface Effect {
     data class Bgm(val on: Boolean) : Effect
     data object StopAllAudio : Effect
     data class Sos(val cause: EmergencyCause) : Effect
-    data class ShowChoices(val choices: List<Choice>) : Effect
+    data class ShowChoices(val branch: Branch) : Effect
     data object HideChoices : Effect
     data class Reroute(val prefer: RouteHint) : Effect
     data class Save(val data: SaveData) : Effect
@@ -35,16 +40,19 @@ sealed interface Effect {
     data class ShowReport(val report: DriveReport) : Effect
 }
 
-data class PendingChoice(val beatId: String, val choices: List<Choice>, val deadline: Long)
+const val TIMEOUT_FLAG = "TIMEOUT"
+
+data class PendingChoice(val beatId: String, val branch: Branch, val deadline: Long, val spoken: Boolean = false)
 
 data class Trip(
     val scenario: Scenario,
     val plan: DrivePlan,
     val save: SaveData,
     val startedAt: Long,
-    val arrivalAt: Long,
+    val etaMinutes: Double,
     val played: Int,
-    val lastBeatAt: Long,
+    val answered: Int,
+    val lastBeatEta: Double,
     val lastReactionAt: Long?,
     val harsh: Map<HarshKind, Int>,
     val flags: Map<String, String>,
@@ -68,9 +76,10 @@ fun startDrive(ready: PreDriveState.Ready, now: Long): Step {
         plan = ready.plan,
         save = ready.save,
         startedAt = now,
-        arrivalAt = now + (ready.etaMinutes * MINUTE).toLong(),
+        etaMinutes = ready.etaMinutes,
         played = 0,
-        lastBeatAt = now,
+        answered = 0,
+        lastBeatEta = ready.etaMinutes,
         lastReactionAt = null,
         harsh = HarshKind.entries.associateWith { 0 },
         flags = ready.save.flags,
@@ -83,61 +92,68 @@ fun startDrive(ready: PreDriveState.Ready, now: Long): Step {
 }
 
 private fun playNextBeat(trip: Trip, now: Long): Step {
-    val beat = trip.plan.beats.getOrNull(trip.played) ?: return Step(DriveState.Driving(trip), emptyList())
+    val planned = trip.plan.beats.getOrNull(trip.played) ?: return Step(DriveState.Driving(trip), emptyList())
+    val beat = planned.beat
     val effects = mutableListOf<Effect>(say(Speaker.CHARACTER, beat.line))
-    val pending = if (beat.choices.isNotEmpty()) {
-        effects += Effect.ShowChoices(beat.choices)
-        PendingChoice(beat.id, beat.choices, now + CHOICE_TIMEOUT_MS)
-    } else null
-    return Step(DriveState.Driving(trip.copy(played = trip.played + 1, lastBeatAt = now, pending = pending)), effects)
+    val pending = beat.branch?.let {
+        effects += Effect.ShowChoices(it)
+        PendingChoice(beat.id, it, now + speechMs(beat.line) + QUESTION_SPEECH_CAP_MS)
+    }
+    return Step(DriveState.Driving(trip.copy(played = trip.played + 1, lastBeatEta = trip.etaMinutes, pending = pending)), effects)
 }
 
-private fun resolveChoice(trip: Trip, choice: Choice): Trip {
-    val pending = trip.pending ?: return trip
-    return trip.copy(pending = null, flags = trip.flags + (pending.beatId to choice.id))
+private fun choose(trip: Trip, hint: RouteHint): Step {
+    val pending = trip.pending ?: return Step(DriveState.Driving(trip), emptyList())
+    val option = pending.branch.option(hint)
+    return Step(
+        DriveState.Driving(trip.copy(pending = null, answered = trip.answered + 1, flags = trip.flags + (pending.beatId to hint.name))),
+        listOf(Effect.HideChoices, say(Speaker.DRIVER, option.label), say(Speaker.CHARACTER, option.reply), Effect.Reroute(hint)),
+    )
 }
 
-private fun choiceEffects(choice: Choice, byDriver: Boolean): List<Effect> {
-    val reroute = if (choice.routeHint == RouteHint.DETOUR && !byDriver) null else choice.routeHint
-    return listOfNotNull(Effect.HideChoices, say(Speaker.CHARACTER, choice.reply), reroute?.let { Effect.Reroute(it) })
+private fun timeOut(trip: Trip): Pair<Trip, List<Effect>> {
+    val pending = trip.pending ?: return trip to emptyList()
+    return trip.copy(pending = null, flags = trip.flags + (pending.beatId to TIMEOUT_FLAG)) to
+        listOf(Effect.HideChoices, say(Speaker.CHARACTER, pending.branch.timeoutLine), Effect.Reroute(RouteHint.KEEP))
 }
 
-private fun safeDefault(choices: List<Choice>): Choice = choices.firstOrNull { it.routeHint != RouteHint.DETOUR } ?: choices.first()
-
-private fun beatDue(trip: Trip, now: Long): Boolean {
+private fun beatDue(trip: Trip): Boolean {
     val remainingBeats = trip.plan.beats.size - trip.played
     if (remainingBeats <= 0 || trip.pending != null) return false
-    val storyWindow = trip.arrivalAt - (ARRIVAL_LEAD_MINUTES * MINUTE).toLong() - trip.lastBeatAt
-    return (now - trip.lastBeatAt) * (remainingBeats + 1) >= storyWindow
+    val travelled = trip.lastBeatEta - trip.etaMinutes
+    return travelled * (remainingBeats + 1) >= trip.lastBeatEta - ARRIVAL_LEAD_MINUTES
 }
 
-private fun progress(trip: Trip, now: Long) = SaveData(
-    scenarioId = trip.scenario.id,
-    cursor = trip.scenario.advance(trip.save.cursor, trip.played),
-    flags = trip.flags,
-    updatedAt = now,
-)
+private fun progress(trip: Trip, now: Long): SaveData {
+    val lastPlayed = trip.plan.beats.getOrNull(trip.played - 1)?.index
+    return SaveData(
+        scenarioId = trip.scenario.id,
+        cursor = trip.scenario.after(trip.save.cursor, lastPlayed),
+        flags = trip.flags,
+        bond = trip.save.bond + bondGain(trip.played, trip.answered, safetyScore(trip.harsh)),
+        updatedAt = now,
+    )
+}
 
 private fun countHarsh(trip: Trip, kind: HarshKind) = trip.copy(harsh = trip.harsh + (kind to (trip.harsh[kind] ?: 0) + 1))
 
 private fun arrive(trip: Trip, now: Long): Step {
-    val effects = mutableListOf<Effect>()
-    var settled = trip
-    trip.pending?.let {
-        val choice = safeDefault(it.choices)
-        settled = resolveChoice(trip, choice)
-        effects += choiceEffects(choice, byDriver = false)
-    }
-    val playedAll = settled.played == settled.plan.beats.size
-    val chapter = settled.scenario.chapters.getOrNull(settled.save.cursor.chapter)
-    val ending = if (playedAll) settled.plan.ending else chapter?.cliffhanger ?: settled.plan.ending
+    val (settled, effects) = timeOut(trip)
     val save = progress(settled, now)
-    effects += listOf(say(Speaker.CHARACTER, ending), Effect.Bgm(false), Effect.Save(save))
-    return Step(DriveState.Arrived(settled, save), effects)
+    val chapter = settled.scenario.chapters.getOrNull(settled.save.cursor.chapter)
+    val ending = when {
+        chapter == null -> null
+        save.cursor.chapter > settled.save.cursor.chapter -> chapter.finale
+        else -> chapter.cliffhanger
+    }
+    return Step(
+        DriveState.Arrived(settled, save),
+        effects + listOfNotNull(ending?.let { say(Speaker.CHARACTER, it) }, Effect.Bgm(false), Effect.Save(save).takeIf { settled.played > 0 }),
+    )
 }
 
 private fun park(trip: Trip, save: SaveData, now: Long): Step {
-    val report = buildReport(trip.scenario, trip.save.cursor, save.cursor, trip.played, trip.harsh, trip.startedAt, now)
+    val report = buildReport(trip.scenario, trip.save, save, trip.played, trip.harsh, trip.startedAt, now)
     return Step(DriveState.Parked(report), listOf(Effect.UxRestrictions(false), Effect.ShowReport(report)))
 }
 
@@ -148,15 +164,12 @@ private fun driving(trip: Trip, event: DriveEvent): Step {
     fun stay(t: Trip, effects: List<Effect> = emptyList()) = Step(DriveState.Driving(t), effects)
     return when (event) {
         is DriveEvent.Tick -> {
-            val t = trip.copy(arrivalAt = event.now + (event.etaMinutes * MINUTE).toLong())
+            val t = trip.copy(etaMinutes = event.etaMinutes, lastBeatEta = maxOf(trip.lastBeatEta, event.etaMinutes))
             val pending = t.pending
             when {
                 event.etaMinutes <= ARRIVAL_LEAD_MINUTES -> arrive(t, event.now)
-                pending != null && event.now >= pending.deadline -> {
-                    val choice = safeDefault(pending.choices)
-                    stay(resolveChoice(t, choice), choiceEffects(choice, byDriver = false))
-                }
-                beatDue(t, event.now) -> playNextBeat(t, event.now)
+                pending != null && event.now >= pending.deadline -> timeOut(t).let { (next, effects) -> stay(next, effects) }
+                beatDue(t) -> playNextBeat(t, event.now)
                 else -> stay(t)
             }
         }
@@ -180,10 +193,12 @@ private fun driving(trip: Trip, event: DriveEvent): Step {
             if (trip.pending != null) stay(trip, listOf(reaction))
             else playNextBeat(trip, event.now).let { Step(it.state, listOf(reaction) + it.effects) }
         }
-        is DriveEvent.RouteGuidance -> stay(trip, listOf(say(Speaker.CHARACTER, "${trip.scenario.persona.name}: ${event.instruction}")))
-        is DriveEvent.DriverInput -> {
-            val choice = trip.pending?.choices?.firstOrNull { it.id == event.choiceId }
-            if (choice == null) stay(trip) else stay(resolveChoice(trip, choice), choiceEffects(choice, byDriver = true))
+        is DriveEvent.RouteGuidance -> stay(trip, listOf(say(Speaker.CHARACTER, event.instruction)))
+        is DriveEvent.DriverInput -> choose(trip, event.hint)
+        is DriveEvent.QuestionSpoken -> {
+            val pending = trip.pending
+            if (pending == null || pending.spoken) stay(trip)
+            else stay(trip.copy(pending = pending.copy(deadline = event.now + ANSWER_WINDOW_MS, spoken = true)))
         }
         is DriveEvent.GearChanged -> {
             if (event.gear != Gear.P) {
@@ -199,7 +214,7 @@ private fun driving(trip: Trip, event: DriveEvent): Step {
     }
 }
 
-// Emergency is terminal by design: once SOS starts, no story or UI transition may follow.
+// Emergency is terminal by design: once SOS starts, no story or UI transition may follow, even after P.
 fun drive(state: DriveState, event: DriveEvent): Step = when (state) {
     is DriveState.Emergency -> Step(state, emptyList())
     is DriveState.Driving -> driving(state.trip, event)

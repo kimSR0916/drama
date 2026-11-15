@@ -16,22 +16,30 @@ import ai.pleos.playground.tts.constant.ErrorType as TtsError
 import ai.pleos.playground.tts.constant.Mode as TtsMode
 import ai.pleos.playground.tts.listener.EventListener as TtsEvents
 import ai.pleos.playground.tts.listener.OnInitializeListener as TtsInit
-import com.drama.app.core.Choice
+import com.drama.app.core.Branch
+import com.drama.app.core.LEAD_SILENCE_MS
+import com.drama.app.core.RouteHint
 import java.util.Locale
 
 private const val TAG = "DramaVoice"
 private const val WATCHDOG_BASE_MS = 3_000L
 private const val WATCHDOG_PER_CHAR_MS = 250L
 
-fun matchChoice(heard: String, choices: List<Choice>): Choice? {
+fun matchChoice(heard: String, branch: Branch): RouteHint? {
     val said = heard.replace(" ", "")
     if (said.isEmpty()) return null
-    choices.firstOrNull { said.contains(it.label.replace(" ", "")) }?.let { return it }
-    val ordinals = listOf(listOf("첫번째", "1번"), listOf("두번째", "2번"), listOf("세번째", "3번"))
-    return choices.indices.firstOrNull { i -> ordinals.getOrNull(i)?.any { said.contains(it) } == true }?.let { choices[it] }
+    val detour = said.contains(branch.detour.keyword.replace(" ", ""))
+    val keep = said.contains(branch.keep.keyword.replace(" ", ""))
+    return when {
+        detour && !keep -> RouteHint.DETOUR
+        keep && !detour -> RouteHint.KEEP
+        listOf("1번", "첫번째").any { said.contains(it) } -> RouteHint.DETOUR
+        listOf("2번", "두번째").any { said.contains(it) } -> RouteHint.KEEP
+        else -> null
+    }
 }
 
-class Voice(context: Context, private val onHeard: (String) -> Unit) {
+class Voice(context: Context, private val onHeard: (String) -> Unit, private val onSpeaking: (String?) -> Unit) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var pleosTts: TextToSpeech? = TextToSpeech(context, TtsMode.ON_DEVICE)
     private var pleosTtsReady = false
@@ -47,6 +55,7 @@ class Voice(context: Context, private val onHeard: (String) -> Unit) {
         if (current != null) return
         val text = queue.removeFirstOrNull()
         if (text == null) {
+            onSpeaking(null)
             if (listenWhenQuiet) {
                 listenWhenQuiet = false
                 requestStt()
@@ -54,7 +63,12 @@ class Voice(context: Context, private val onHeard: (String) -> Unit) {
             return
         }
         current = text
-        mainHandler.postDelayed(watchdog, WATCHDOG_BASE_MS + text.length * WATCHDOG_PER_CHAR_MS)
+        mainHandler.postDelayed(watchdog, LEAD_SILENCE_MS + WATCHDOG_BASE_MS + text.length * WATCHDOG_PER_CHAR_MS)
+        mainHandler.postDelayed({ if (current == text) start(text) }, LEAD_SILENCE_MS)
+    }
+
+    private fun start(text: String) {
+        onSpeaking(text)
         val started = (pleosTtsReady && runCatching { pleosTts?.speak(text, true) }.isSuccess) ||
             fallback?.speak(text, AndroidTts.QUEUE_FLUSH, null, text.hashCode().toString()) == AndroidTts.SUCCESS
         if (!started) onSpeechDone()
@@ -127,6 +141,7 @@ class Voice(context: Context, private val onHeard: (String) -> Unit) {
     }
 
     fun stopSpeaking() {
+        onSpeaking(null)
         queue.clear()
         current = null
         mainHandler.removeCallbacks(watchdog)
@@ -135,15 +150,21 @@ class Voice(context: Context, private val onHeard: (String) -> Unit) {
         fallback?.stop()
     }
 
-    fun listen() {
+    private var onQuiet: (() -> Unit)? = null
+
+    fun listen(onQuestionSpoken: () -> Unit) {
+        onQuiet = onQuestionSpoken
         if (current == null && queue.isEmpty()) requestStt() else listenWhenQuiet = true
     }
 
     private fun requestStt() {
+        onQuiet?.invoke()
+        onQuiet = null
         if (sttReady) runCatching { stt.request() }.onFailure { Log.w(TAG, "STT request failed", it) }
     }
 
     fun stopListening() {
+        onQuiet = null
         listenWhenQuiet = false
         if (sttReady) runCatching { stt.stop() }
     }
